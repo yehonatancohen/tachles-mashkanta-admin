@@ -1,0 +1,27 @@
+{
+  "name": "tachles-admin",
+  "type": "module",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cf-typegen": "wrangler types",
+    "sync:local": "wrangler dev --test-scheduled"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^14.3.2",
+    "astro": "^7.3.3"
+  },
+  "devDependencies": {
+    "@astrojs/check": "^0.9.10",
+    "@fontsource-variable/heebo": "^5.3.0",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.1",
+    "wrangler": "^4.136.3"
+  }
+}

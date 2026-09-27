@@ -1,0 +1,18 @@
+# Copy to .dev.vars for local development. In production use: npx wrangler secret put <NAME>
+
+# Cloudflare Access (Zero Trust). Fails closed if unset — see src/server/access.ts.
+ACCESS_TEAM_DOMAIN=your-team.cloudflareaccess.com
+ACCESS_AUD=your-access-app-aud-tag
+
+# Dev-only bypass for Access. NEVER set this outside .dev.vars.
+DEV_AUTH_BYPASS=1
+
+# Google service account (GA4 + Search Console). Paste the full JSON key as one line.
+# The service account must be added as a Viewer on the GA4 property and as a user in GSC.
+GOOGLE_SA_JSON={"type":"service_account","client_email":"...","private_key":"..."}
+GA4_PROPERTY_ID=properties/000000000
+GSC_SITE_URL=https://tachles-mashkanta.co.il/
+
+# Microsoft Clarity Data Export API token (project settings > Data Export).
+# 10 calls/day quota — see src/collectors/clarity.ts.
+CLARITY_API_TOKEN=change-me

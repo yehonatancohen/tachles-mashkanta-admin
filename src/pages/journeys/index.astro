@@ -1,0 +1,53 @@
+---
+export const prerender = false;
+import AdminLayout from '../../layouts/AdminLayout.astro';
+import PeriodPicker from '../../components/PeriodPicker.astro';
+import { getEnv } from '../../server/env';
+import { resolvePeriod } from '../../server/period';
+import { listJourneys } from '../../server/queries/journeys';
+
+const env = getEnv();
+const period = resolvePeriod(Astro.url);
+const converted = Astro.url.searchParams.get('converted') === '1';
+const journeys = await listJourneys(env, period, { converted });
+
+const qs = (overrides: Record<string, string | undefined>) => {
+  const p = new URLSearchParams(Astro.url.searchParams);
+  for (const [k, v] of Object.entries(overrides)) (v ? p.set(k, v) : p.delete(k));
+  return `?${p.toString()}`;
+};
+---
+
+<AdminLayout title="מסעות">
+  <div class="page-head">
+    <h1>מסעות מבקרים</h1>
+    <PeriodPicker period={period} />
+  </div>
+
+  <div class="filters">
+    <a class="chip" href={qs({ converted: undefined })} aria-pressed={!converted ? 'true' : 'false'}>הכול</a>
+    <a class="chip" href={qs({ converted: '1' })} aria-pressed={converted ? 'true' : 'false'}>הומרו לליד בלבד</a>
+  </div>
+
+  <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>התחיל</th><th>דף כניסה</th><th>מקור</th><th>מכשיר</th><th>מדינה</th><th class="num">צפיות</th><th class="num">מעורבות</th><th>ליד</th><th></th></tr></thead>
+      <tbody>
+        {journeys.length === 0 && <tr><td colspan="9" class="empty">אין מסעות לתקופה זו עדיין.</td></tr>}
+        {journeys.map((j) => (
+          <tr>
+            <td class="num">{j.startedAt.slice(0, 16)}</td>
+            <td>{j.entryPage}</td>
+            <td>{j.utmSource ?? '(direct)'}</td>
+            <td>{j.device ?? '—'}</td>
+            <td>{j.country ?? '—'}</td>
+            <td class="num">{j.pageviews}</td>
+            <td class="num">{Math.round(j.engagedMs / 1000)}s</td>
+            <td>{j.leadId ? '✓' : '—'}</td>
+            <td><a href={`/journeys/${j.id}/`}>צפייה ⟵</a></td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</AdminLayout>

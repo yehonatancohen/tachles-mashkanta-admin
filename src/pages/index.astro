@@ -1,0 +1,97 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import PeriodPicker from '../components/PeriodPicker.astro';
+import KpiTile from '../components/KpiTile.astro';
+import LineChart from '../components/LineChart.astro';
+import BarList from '../components/BarList.astro';
+import Freshness from '../components/Freshness.astro';
+import { getEnv } from '../server/env';
+import { resolvePeriod } from '../server/period';
+import { overviewKpis, dailySessionsAndLeads, funnel, topSources, topLandingPages, latestReport } from '../server/queries/overview';
+import { sourceStatuses } from '../server/queries/sources';
+
+const env = getEnv();
+const period = resolvePeriod(Astro.url);
+
+const [{ current, previous }, daily, steps, sources, landing, report, syncStatus] = await Promise.all([
+  overviewKpis(env, period),
+  dailySessionsAndLeads(env, period),
+  funnel(env, period),
+  topSources(env, period),
+  topLandingPages(env, period),
+  latestReport(env),
+  sourceStatuses(env),
+]);
+
+const dailyByDate = new Map(daily.map((d) => [d.date, d]));
+const labels: string[] = [];
+for (let d = new Date(period.from); d <= new Date(period.to); d.setDate(d.getDate() + 1)) labels.push(d.toISOString().slice(0, 10));
+const sessionsSeries = labels.map((l) => dailyByDate.get(l)?.sessions ?? 0);
+const leadsSeries = labels.map((l) => dailyByDate.get(l)?.leads ?? 0);
+
+const maxFunnel = Math.max(1, ...steps.map((s) => s.sessions));
+---
+
+<AdminLayout title="סקירה">
+  <div class="page-head">
+    <h1>סקירה</h1>
+    <PeriodPicker period={period} />
+  </div>
+  <Freshness sources={syncStatus} />
+
+  <section class="section">
+    <div class="section__grid">
+      <KpiTile label="מבקרים (סשנים)" value={String(current.sessions)} current={current.sessions} previous={previous.sessions} />
+      <KpiTile label="לידים" value={String(current.leads)} current={current.leads} previous={previous.leads} />
+      <KpiTile label="המרה לליד" value={`${current.cvPct}%`} current={current.cvPct} previous={previous.cvPct} />
+      <KpiTile label="נתח דרגה A" value={`${current.tierAPct}%`} current={current.tierAPct} previous={previous.tierAPct} />
+      <KpiTile label="זמן מעורבות ממוצע" value={`${current.avgEngagedS}s`} current={current.avgEngagedS} previous={previous.avgEngagedS} />
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>מבקרים מול לידים לפי יום</h2>
+    <div class="card">
+      <LineChart labels={labels} series={[{ label: 'סשנים', values: sessionsSeries }, { label: 'לידים', values: leadsSeries }]} />
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>משפך</h2>
+    <div class="card barlist">
+      {steps.map((s) => (
+        <div class="barlist__row">
+          <div class="barlist__label">
+            <span class="barlist__name">{s.label}</span>
+            <span class="barlist__track"><span class="barlist__fill" style={`inline-size: ${Math.round((s.sessions / maxFunnel) * 100)}%`}></span></span>
+          </div>
+          <span class="barlist__value">{s.sessions}</span>
+        </div>
+      ))}
+    </div>
+  </section>
+
+  <div class="section__grid">
+    <section class="section">
+      <h2>מקורות מובילים</h2>
+      <div class="card">
+        <BarList rows={sources.map((s) => ({ label: `${s.source} / ${s.medium}`, value: s.sessions, displayValue: `${s.sessions} · ${s.cvPct}%` }))} />
+      </div>
+    </section>
+    <section class="section">
+      <h2>דפי כניסה מובילים</h2>
+      <div class="card">
+        <BarList rows={landing.map((l) => ({ label: l.page, value: l.sessions, displayValue: `${l.sessions} · ${l.cvPct}%` }))} />
+      </div>
+    </section>
+  </div>
+
+  {report && (
+    <section class="section">
+      <h2>דוח AI אחרון ({report.periodFrom} – {report.periodTo})</h2>
+      <div class="card report-body" style="white-space: pre-wrap;">{report.summaryMd}</div>
+      <p><a class="btn btn--quiet" href="/agent/">כל הדוחות ⟵</a></p>
+    </section>
+  )}
+</AdminLayout>

@@ -1,0 +1,28 @@
+---
+interface Row {
+  label: string;
+  value: number;
+  displayValue: string;
+}
+interface Props {
+  rows: Row[];
+}
+const { rows } = Astro.props;
+const max = Math.max(1, ...rows.map((r) => r.value));
+---
+
+{rows.length === 0 ? (
+  <p class="empty">אין נתונים לתקופה זו עדיין.</p>
+) : (
+  <div class="barlist">
+    {rows.map((r) => (
+      <div class="barlist__row">
+        <div class="barlist__label">
+          <span class="barlist__name">{r.label}</span>
+          <span class="barlist__track"><span class="barlist__fill" style={`inline-size: ${Math.round((r.value / max) * 100)}%`}></span></span>
+        </div>
+        <span class="barlist__value">{r.displayValue}</span>
+      </div>
+    ))}
+  </div>
+)}

@@ -1,0 +1,22 @@
+---
+import type { Period } from '../server/period';
+
+interface Props {
+  period: Period;
+}
+const { period } = Astro.props;
+const path = Astro.url.pathname;
+const OPTIONS = [
+  { days: 7, label: '7 ימים' },
+  { days: 28, label: '28 ימים' },
+  { days: 90, label: '90 ימים' },
+] as const;
+---
+
+<nav class="period-picker" aria-label="טווח תאריכים">
+  {OPTIONS.map((o) => (
+    <a class="chip" href={`${path}?days=${o.days}`} aria-pressed={period.days === o.days ? 'true' : 'false'}>
+      {o.label}
+    </a>
+  ))}
+</nav>

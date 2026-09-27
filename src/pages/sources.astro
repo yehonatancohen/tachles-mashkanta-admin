@@ -1,0 +1,53 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import { getEnv } from '../server/env';
+import { sourceStatuses } from '../server/queries/sources';
+
+const env = getEnv();
+const sources = await sourceStatuses(env);
+
+const relative = (iso?: string) => {
+  if (!iso) return 'מעולם לא רץ';
+  const hours = Math.round((Date.now() - new Date(`${iso}Z`).getTime()) / 3_600_000);
+  if (hours < 1) return 'לפני פחות משעה';
+  if (hours < 24) return `לפני ${hours} שעות`;
+  return `לפני ${Math.round(hours / 24)} ימים`;
+};
+---
+
+<AdminLayout title="מקורות נתונים">
+  <div class="page-head">
+    <h1>מקורות נתונים</h1>
+  </div>
+  <p style="color: var(--c-text-2); font-size: var(--text-sm); max-width: var(--measure);">
+    הריצה האוטומטית פועלת פעם ביום (03:00). Clarity מוגבל ל-10 קריאות ביום — כפתור "הרץ עכשיו" חסום אם המקור כבר רץ בהצלחה היום.
+  </p>
+
+  <div class="section__grid" style="grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));">
+    {sources.map((s) => {
+      const ranToday = s.lastRun?.status === 'ok' && s.lastRun.at.slice(0, 10) === new Date().toISOString().slice(0, 10);
+      const clarityLocked = s.id === 'clarity' && ranToday;
+      return (
+        <div class="card" style="display:grid; gap: var(--space-3);">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <strong>{s.label}</strong>
+            <span class="badge" style={s.configured ? 'background:var(--c-savings-soft); color:var(--c-savings);' : 'background:var(--c-attention-soft); color:var(--c-attention);'}>
+              {s.configured ? 'מוגדר' : 'חסרים secrets'}
+            </span>
+          </div>
+          <div style="font-size: var(--text-sm); color: var(--c-text-2);">
+            ריצה אחרונה: {relative(s.lastRun?.at)}
+            {s.lastRun && ` · ${s.lastRun.status} · ${s.lastRun.rows} שורות`}
+          </div>
+          {s.lastRun?.error && <div style="font-size: var(--text-xs); color: var(--c-danger);">{s.lastRun.error}</div>}
+          <form method="post" action={`/api/sync/${s.id}/`}>
+            <button class="btn btn--secondary" type="submit" disabled={!s.configured || clarityLocked}>
+              {clarityLocked ? 'כבר רץ היום' : 'הרץ עכשיו'}
+            </button>
+          </form>
+        </div>
+      );
+    })}
+  </div>
+</AdminLayout>

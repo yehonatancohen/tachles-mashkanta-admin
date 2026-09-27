@@ -1,0 +1,32 @@
+---
+import type { SourceStatus } from '../server/queries/sources';
+
+interface Props {
+  sources: SourceStatus[];
+}
+const { sources } = Astro.props;
+
+const stateOf = (s: SourceStatus): 'ok' | 'stale' | 'failed' => {
+  if (!s.lastRun) return 'stale';
+  if (s.lastRun.status === 'error') return 'failed';
+  const hours = (Date.now() - new Date(`${s.lastRun.at}Z`).getTime()) / 3_600_000;
+  return hours > 36 ? 'stale' : 'ok';
+};
+
+const relative = (iso?: string) => {
+  if (!iso) return 'מעולם לא רץ';
+  const hours = Math.round((Date.now() - new Date(`${iso}Z`).getTime()) / 3_600_000);
+  if (hours < 1) return 'לפני פחות משעה';
+  if (hours < 24) return `לפני ${hours} שעות`;
+  return `לפני ${Math.round(hours / 24)} ימים`;
+};
+---
+
+<div class="freshness-strip">
+  {sources.map((s) => (
+    <span class="freshness">
+      <span class={`dot dot--${stateOf(s)}`}></span>
+      {s.label}: {relative(s.lastRun?.at)}
+    </span>
+  ))}
+</div>

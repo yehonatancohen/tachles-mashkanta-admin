@@ -1,0 +1,56 @@
+---
+/** Inline SVG line chart, no client JS or charting library. Up to 2 series (see DESIGN.md:
+ * a chart with more series becomes a table instead). Each point carries a native <title> for
+ * a value on hover, so no JS tooltip is needed. */
+interface Series {
+  label: string;
+  values: number[];
+}
+interface Props {
+  labels: string[];
+  series: Series[];
+  height?: number;
+}
+const { labels, series, height = 200 } = Astro.props;
+const width = 720;
+const padding = { top: 12, right: 12, bottom: 24, left: 12 };
+const innerW = width - padding.left - padding.right;
+const innerH = height - padding.top - padding.bottom;
+
+const allValues = series.flatMap((s) => s.values);
+const max = Math.max(1, ...allValues);
+const n = Math.max(1, labels.length - 1);
+
+const x = (i: number) => padding.left + (innerW * i) / n;
+const y = (v: number) => padding.top + innerH - (innerH * v) / max;
+
+const pathFor = (values: number[]) => values.map((v, i) => `${i === 0 ? 'M' : 'L'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+---
+
+{labels.length === 0 ? (
+  <p class="empty">אין נתונים לתקופה זו עדיין.</p>
+) : (
+  <>
+    <svg class="chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={series.map((s) => s.label).join(', ')}>
+      <line class="axis" x1={padding.left} y1={padding.top + innerH} x2={width - padding.right} y2={padding.top + innerH} />
+      {series.map((s, si) => (
+        <path class={`series series--${si + 1}`} d={pathFor(s.values)} />
+      ))}
+      {series.map((s, si) =>
+        s.values.map((v, i) => (
+          <circle cx={x(i)} cy={y(v)} r="2.5" style={`fill: var(--c-series-${si + 1})`}>
+            <title>{`${labels[i]} · ${s.label}: ${v}`}</title>
+          </circle>
+        )),
+      )}
+    </svg>
+    <div class="chart-legend">
+      {series.map((s, si) => (
+        <span class="chart-legend__item">
+          <span class="chart-legend__swatch" style={`background: var(--c-series-${si + 1})`}></span>
+          {s.label}
+        </span>
+      ))}
+    </div>
+  </>
+)}

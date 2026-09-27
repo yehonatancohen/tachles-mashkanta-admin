@@ -1,0 +1,60 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import { getEnv } from '../server/env';
+import { listReports, listChanges } from '../server/queries/agent';
+
+const env = getEnv();
+const [reports, changes] = await Promise.all([listReports(env), listChanges(env)]);
+---
+
+<AdminLayout title="סוכן AI">
+  <div class="page-head">
+    <h1>סוכן AI</h1>
+  </div>
+  <p style="color: var(--c-text-2); font-size: var(--text-sm); max-width: var(--measure);">
+    הסוכן קורא את הנתונים כפעמיים בשבוע דרך <code>/api/export</code> וכותב לכאן דוחות והצעות שינוי,
+    יחד עם ההשערה, המדד שאמור להשתנות והתוצאה בפועל בריצה הבאה.
+  </p>
+
+  <section class="section">
+    <h2>דוחות</h2>
+    {reports.length === 0 ? (
+      <p class="empty">אין דוחות עדיין.</p>
+    ) : (
+      <div style="display:grid; gap: var(--space-4);">
+        {reports.map((r) => (
+          <div class="card">
+            <div style="display:flex; justify-content:space-between; color: var(--c-text-2); font-size: var(--text-sm);">
+              <span>{r.periodFrom} – {r.periodTo}</span>
+              <span>{r.createdAt.slice(0, 16)}</span>
+            </div>
+            <div class="report-body" style="white-space: pre-wrap; margin-block-start: var(--space-2);">{r.summaryMd}</div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+
+  <section class="section">
+    <h2>יומן שינויים</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>תאריך</th><th>תיאור</th><th>השערה</th><th>מדד</th><th class="num">בסיס</th><th>תוצאה</th></tr></thead>
+        <tbody>
+          {changes.length === 0 && <tr><td colspan="6" class="empty">אין שינויים רשומים עדיין.</td></tr>}
+          {changes.map((c) => (
+            <tr>
+              <td class="num">{c.createdAt.slice(0, 10)}</td>
+              <td>{c.description}</td>
+              <td>{c.hypothesis}</td>
+              <td>{c.metric}</td>
+              <td class="num">{c.baseline ?? '—'}</td>
+              <td>{c.result ?? (c.evaluatedAt ? 'בבדיקה' : 'ממתין לנתונים')}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>

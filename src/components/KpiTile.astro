@@ -1,0 +1,27 @@
+---
+import { delta } from '../server/period';
+
+interface Props {
+  label: string;
+  value: string;
+  current: number;
+  previous: number;
+  /** When true, a decrease is good (e.g. exit rate) and gets the "up" styling. */
+  invert?: boolean;
+}
+const { label, value, current, previous, invert = false } = Astro.props;
+const d = delta(current, previous);
+const direction = d === null || d.sign === '' ? 'flat' : d.sign === '+' ? 'up' : 'down';
+const good = invert ? direction === 'down' : direction === 'up';
+const cls = direction === 'flat' ? 'flat' : good ? 'up' : 'down';
+---
+
+<div class="kpi">
+  <span class="kpi__label">{label}</span>
+  <span class="kpi__value">{value}</span>
+  {d && (
+    <span class={`kpi__delta kpi__delta--${cls}`}>
+      {d.sign}{d.pct}% לעומת התקופה הקודמת
+    </span>
+  )}
+</div>

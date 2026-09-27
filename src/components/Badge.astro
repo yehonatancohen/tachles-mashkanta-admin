@@ -1,0 +1,9 @@
+---
+interface Props {
+  tier: string;
+}
+const { tier } = Astro.props;
+const cls = tier === 'A' ? 'badge--tier-a' : tier === 'B' ? 'badge--tier-b' : 'badge--tier-c';
+---
+
+<span class={`badge ${cls}`}>{tier}</span>

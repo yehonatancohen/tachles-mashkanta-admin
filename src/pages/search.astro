@@ -1,0 +1,58 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import PeriodPicker from '../components/PeriodPicker.astro';
+import LineChart from '../components/LineChart.astro';
+import { getEnv } from '../server/env';
+import { resolvePeriod } from '../server/period';
+import { searchDaily, topQueries, searchOpportunities } from '../server/queries/search';
+
+const env = getEnv();
+const period = resolvePeriod(Astro.url);
+const [daily, queries, opportunities] = await Promise.all([searchDaily(env, period), topQueries(env, period), searchOpportunities(env)]);
+
+const labels = daily.map((d) => d.date);
+const clicksSeries = daily.map((d) => d.clicks);
+const impressionsSeries = daily.map((d) => Math.round(d.impressions / 10)); // scaled down to share the axis sensibly
+---
+
+<AdminLayout title="חיפוש">
+  <div class="page-head">
+    <h1>חיפוש (Search Console)</h1>
+    <PeriodPicker period={period} />
+  </div>
+
+  <section class="section">
+    <h2>קליקים והופעות</h2>
+    <div class="card">
+      <LineChart labels={labels} series={[{ label: 'קליקים', values: clicksSeries }, { label: 'הופעות ÷10', values: impressionsSeries }]} />
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>מונחי חיפוש מובילים</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>מונח</th><th class="num">קליקים</th><th class="num">הופעות</th><th class="num">CTR</th><th class="num">מיקום</th></tr></thead>
+        <tbody>
+          {queries.length === 0 && <tr><td colspan="5" class="empty">Search Console עדיין לא מחובר. ראו /sources/.</td></tr>}
+          {queries.map((q) => <tr><td>{q.query}</td><td class="num">{q.clicks}</td><td class="num">{q.impressions}</td><td class="num">{q.ctrPct}%</td><td class="num">{q.position}</td></tr>)}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>הזדמנויות</h2>
+    <p style="color: var(--c-text-2); font-size: var(--text-sm);">הופעות גבוהות עם CTR נמוך, או מיקום 5–20 — מועמדים לשיפור תוכן/כותרת.</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>מונח</th><th>דף</th><th class="num">קליקים</th><th class="num">הופעות</th><th class="num">CTR</th><th class="num">מיקום ממוצע</th></tr></thead>
+        <tbody>
+          {opportunities.length === 0 && <tr><td colspan="6" class="empty">אין הזדמנויות עדיין.</td></tr>}
+          {opportunities.map((o) => <tr><td>{o.query}</td><td>{o.page}</td><td class="num">{o.clicks}</td><td class="num">{o.impressions}</td><td class="num">{o.ctrPct}%</td><td class="num">{o.avgPosition}</td></tr>)}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>

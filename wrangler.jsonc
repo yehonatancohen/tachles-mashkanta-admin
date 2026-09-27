@@ -1,0 +1,38 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "tachles-admin",
+	"compatibility_date": "2026-09-01",
+	"compatibility_flags": ["nodejs_compat"],
+	"main": "src/worker.ts",
+	"workers_dev": false,
+	"preview_urls": false,
+	"assets": {
+		"directory": "./dist/client",
+		"binding": "ASSETS"
+	},
+	"routes": [
+		{ "pattern": "admin.tachles-mashkanta.co.il", "custom_domain": true }
+	],
+	"triggers": {
+		// Daily at 03:00 Israel time (00:00 UTC in summer/IDT). GSC lags ~2-3 days and Clarity's
+		// export API only covers a short rolling window, so this re-pulls a 5-day window and
+		// upserts — see src/collectors/index.ts. The AI agent reads the accumulated data ~2x/week.
+		"crons": ["0 0 * * *"]
+	},
+	"d1_databases": [
+		{
+			// Owned by this project; migrations live in tachles-admin/migrations.
+			"binding": "ANALYTICS",
+			"database_name": "tachles-analytics",
+			"database_id": "23d2663a-37b2-4cd3-9c84-82a4e13fa2ae",
+			"migrations_dir": "migrations"
+		},
+		{
+			// Read-only by convention (this project never runs migrations against it).
+			// Same database as mortgage-website/wrangler.jsonc's DB binding.
+			"binding": "LEADS",
+			"database_name": "mortgage-leads",
+			"database_id": "082917c3-a3aa-4d79-904f-d5a04839732c"
+		}
+	]
+}

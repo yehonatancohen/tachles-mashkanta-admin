@@ -1,0 +1,63 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import PeriodPicker from '../components/PeriodPicker.astro';
+import { getEnv } from '../server/env';
+import { resolvePeriod } from '../server/period';
+import { pagePerformance, claritySignals, topEvents } from '../server/queries/behavior';
+
+const env = getEnv();
+const period = resolvePeriod(Astro.url);
+const [pages, clarity, events] = await Promise.all([pagePerformance(env, period), claritySignals(env, period), topEvents(env, period)]);
+
+const CLARITY_LABEL: Record<string, string> = {
+  RageClickCount: 'קליקים עצבניים',
+  DeadClickCount: 'קליקים מתים',
+  QuickbackClick: 'חזרה מהירה',
+  ExcessiveScroll: 'גלילת יתר',
+  ScriptErrorCount: 'שגיאות JS',
+};
+---
+
+<AdminLayout title="התנהגות">
+  <div class="page-head">
+    <h1>התנהגות</h1>
+    <PeriodPicker period={period} />
+  </div>
+
+  <section class="section">
+    <h2>ביצועי דפים (נתוני צד ראשון)</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>נתיב</th><th class="num">סשנים</th><th class="num">צפיות</th><th class="num">זמן מעורבות</th><th class="num">גלילה ממוצעת</th><th class="num">יציאה %</th></tr></thead>
+        <tbody>
+          {pages.length === 0 && <tr><td colspan="6" class="empty">אין נתונים לתקופה זו עדיין.</td></tr>}
+          {pages.map((p) => <tr><td>{p.path}</td><td class="num">{p.sessions}</td><td class="num">{p.pageviews}</td><td class="num">{p.avgEngagedS}s</td><td class="num">{p.avgScrollPct}%</td><td class="num">{p.exitRatePct}%</td></tr>)}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>אותות Clarity</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>עמוד</th><th>אות</th><th class="num">ערך</th></tr></thead>
+        <tbody>
+          {clarity.length === 0 && <tr><td colspan="3" class="empty">Clarity עדיין לא מחובר. ראו /sources/.</td></tr>}
+          {clarity.map((c) => <tr><td>{c.url}</td><td>{CLARITY_LABEL[c.metric] ?? c.metric}</td><td class="num">{c.value}</td></tr>)}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>אירועים נפוצים</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>אירוע</th><th class="num">כמות</th></tr></thead>
+        <tbody>{events.map((e) => <tr><td>{e.name}</td><td class="num">{e.n}</td></tr>)}</tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>

@@ -1,0 +1,97 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import PeriodPicker from '../components/PeriodPicker.astro';
+import Badge from '../components/Badge.astro';
+import { getEnv } from '../server/env';
+import { resolvePeriod } from '../server/period';
+import { tierOutcomes, listLeads, leadsByKind, type LeadFilters } from '../server/queries/leads';
+
+const env = getEnv();
+const period = resolvePeriod(Astro.url);
+const status = Astro.url.searchParams.get('status') ?? 'all';
+const kind = Astro.url.searchParams.get('kind') ?? undefined;
+
+const filters: LeadFilters = { status: status === 'all' ? undefined : status, kind, from: period.from, to: period.to };
+const [outcomes, leads, byKind] = await Promise.all([tierOutcomes(env), listLeads(env, filters), leadsByKind(env, period)]);
+
+const STATUSES = [
+  { value: 'all', label: 'הכול' },
+  { value: 'new', label: 'חדש' },
+  { value: 'held', label: 'לבדיקה' },
+  { value: 'delivered', label: 'נשלחו' },
+  { value: 'nurture', label: 'טיפוח' },
+  { value: 'duplicate', label: 'כפולים' },
+] as const;
+
+const qs = (overrides: Record<string, string | undefined>) => {
+  const p = new URLSearchParams(Astro.url.searchParams);
+  for (const [k, v] of Object.entries(overrides)) (v ? p.set(k, v) : p.delete(k));
+  return `?${p.toString()}`;
+};
+
+const timingLabel = (t: string | null) => t ?? '—';
+---
+
+<AdminLayout title="לידים">
+  <div class="page-head">
+    <h1>לידים</h1>
+    <PeriodPicker period={period} />
+  </div>
+
+  <section class="section">
+    <h2>תוצאות לפי דרגה</h2>
+    <p style="color: var(--c-text-2); font-size: var(--text-sm);">בסיס לכיול המשקלים באתר הראשי (config/scoring.ts).</p>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>דרגה</th><th class="num">לידים</th><th class="num">ציון ממוצע</th><th class="num">קשר</th><th class="num">פגישה</th><th class="num">נסגר</th><th class="num">לא רלוונטי</th></tr></thead>
+        <tbody>
+          {outcomes.map((o) => (
+            <tr><th scope="row"><Badge tier={o.tier} /></th><td class="num">{o.n}</td><td class="num">{o.avg_score ?? '—'}</td><td class="num">{o.contacted ?? 0}</td><td class="num">{o.meeting ?? 0}</td><td class="num">{o.closed ?? 0}</td><td class="num">{o.not_relevant ?? 0}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>לפי סוג</h2>
+    <div class="card" style="display:flex; gap: var(--space-6);">
+      {byKind.map((k) => (
+        <span><strong>{k.kind === 'refinance' ? 'מחזור' : 'רכישה'}:</strong> {k.n}</span>
+      ))}
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="filters">
+      {STATUSES.map((s) => (
+        <a class="chip" href={qs({ status: s.value === 'all' ? undefined : s.value })} aria-pressed={status === s.value ? 'true' : 'false'}>{s.label}</a>
+      ))}
+      <a class="btn btn--quiet" href="https://tachles-mashkanta.co.il/admin/export.csv" target="_blank" rel="noopener">ייצוא מהאתר הראשי ⟵</a>
+    </div>
+    <h2>רשימת לידים (<bdi>{leads.length}</bdi>)</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>נוצר</th><th>שם</th><th>טלפון</th><th>סוג</th><th>מתי</th><th>דרגה</th><th class="num">ציון</th><th>סטטוס</th><th>כניסה</th><th>תוצאה</th><th>מסע</th></tr></thead>
+        <tbody>
+          {leads.map((l) => (
+            <tr>
+              <td class="num">{l.created_at.slice(0, 16)}</td>
+              <td>{l.first_name}</td>
+              <td class="num"><bdi>{l.phone.replace('+972', '0')}</bdi></td>
+              <td>{l.kind === 'refinance' ? 'מחזור' : 'רכישה'}</td>
+              <td>{timingLabel(l.timing)}</td>
+              <td><Badge tier={l.tier} /></td>
+              <td class="num">{l.score ?? '—'}</td>
+              <td>{l.status}</td>
+              <td>{l.entry_page}</td>
+              <td>{l.outcome ?? '—'}</td>
+              <td>{l.session_id ? <a href={`/journeys/${l.session_id}/`}>צפייה ⟵</a> : '—'}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>

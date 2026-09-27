@@ -1,0 +1,70 @@
+---
+export const prerender = false;
+import AdminLayout from '../layouts/AdminLayout.astro';
+import PeriodPicker from '../components/PeriodPicker.astro';
+import { getEnv } from '../server/env';
+import { resolvePeriod } from '../server/period';
+import { channels, byDevice, byCountry, ga4Rows } from '../server/queries/traffic';
+
+const env = getEnv();
+const period = resolvePeriod(Astro.url);
+const [ch, devices, countries, ga4] = await Promise.all([channels(env, period), byDevice(env, period), byCountry(env, period), ga4Rows(env, period)]);
+---
+
+<AdminLayout title="תנועה">
+  <div class="page-head">
+    <h1>תנועה</h1>
+    <PeriodPicker period={period} />
+  </div>
+
+  <section class="section">
+    <h2>ערוצים (נתוני צד ראשון)</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>מקור</th><th>מדיום</th><th class="num">סשנים</th><th class="num">% מעורבות</th><th class="num">לידים</th><th class="num">המרה %</th></tr></thead>
+        <tbody>
+          {ch.length === 0 && <tr><td colspan="6" class="empty">אין נתונים לתקופה זו עדיין.</td></tr>}
+          {ch.map((c) => (
+            <tr><td>{c.source}</td><td>{c.medium}</td><td class="num">{c.sessions}</td><td class="num">{c.engagedPct}%</td><td class="num">{c.leads}</td><td class="num">{c.cvPct}%</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="section__grid">
+    <section class="section">
+      <h2>מכשיר</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>מכשיר</th><th class="num">סשנים</th><th class="num">לידים</th></tr></thead>
+          <tbody>{devices.map((d) => <tr><td>{d.device}</td><td class="num">{d.sessions}</td><td class="num">{d.leads}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <h2>מדינה</h2>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>מדינה</th><th class="num">סשנים</th></tr></thead>
+          <tbody>{countries.map((c) => <tr><td>{c.country}</td><td class="num">{c.sessions}</td></tr>)}</tbody>
+        </table>
+      </div>
+    </section>
+  </div>
+
+  <section class="section">
+    <h2>GA4 (הצלבה)</h2>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>דף</th><th>מקור</th><th>מדיום</th><th>מכשיר</th><th class="num">סשנים</th><th class="num">משתמשים</th><th class="num">אירועי מפתח</th></tr></thead>
+        <tbody>
+          {ga4.length === 0 && <tr><td colspan="7" class="empty">GA4 עדיין לא מחובר. ראו /sources/.</td></tr>}
+          {ga4.map((r) => (
+            <tr><td>{r.page}</td><td>{r.source}</td><td>{r.medium}</td><td>{r.device}</td><td class="num">{r.sessions}</td><td class="num">{r.users}</td><td class="num">{r.keyEvents}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</AdminLayout>
