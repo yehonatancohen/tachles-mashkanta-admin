@@ -17,7 +17,7 @@ visitor ─► mortgage-website ──beacon /api/t──► D1 tachles-analytic
 - **tachles-admin** owns a separate D1 database, `tachles-analytics` (this project's `migrations/`), and reads `mortgage-leads` **read-only** through a second D1 binding (`LEADS`) — it never runs migrations against it.
 - A daily cron (`src/worker.ts`'s `scheduled` handler, wired through `src/collectors/index.ts`) pulls GA4, Search Console and Clarity data and copies a name/phone-free snapshot of recent leads into `tachles-analytics`.
 - The whole app sits behind **Cloudflare Access**; `src/middleware.ts` re-verifies the Access JWT on every route as defense in depth.
-- An AI agent reads the accumulated data roughly twice a week (via `GET /api/export` or direct `wrangler d1 execute`) and writes reports/change proposals back into `ai_reports`/`ai_changes`.
+- An AI agent reads the accumulated data roughly twice a week (via the Agent API below) and writes reports/change proposals back into `ai_reports`/`ai_changes`. Its instructions are the `conversion-review` skill in `.claude/skills/conversion-review/SKILL.md`, run by a scheduled cloud routine.
 
 ## Why daily, when the agent reads twice a week
 
@@ -110,7 +110,8 @@ Everything is behind the same Access check (the agent sends its service token's 
 | Route | Purpose |
 |---|---|
 | `GET /api/export/?from&to` | The analysis views. |
-| `GET /api/agent/state/` | Start-of-run context: per-source sync freshness, latest report, change log. |
+| `GET /api/agent/state/` | Start-of-run context: per-source sync freshness, latest report (incl. its `findings`, the agent's carry-over memory), change log. |
+| `GET /api/agent/metrics/?from&to[&page=/path/]` | Windowed metrics for before/after comparisons: totals, per-page first-party metrics, funnel events, raw GSC page×query rows (no impression threshold). Bots excluded. |
 | `POST /api/agent/reports/` | `{ periodFrom, periodTo, summaryMd, findings? }` → `{ id }` |
 | `POST /api/agent/changes/` | `{ description, hypothesis, metric, baseline?, files?, prUrl? }` → `{ id }` |
 | `PATCH /api/agent/changes/:id/` | Any of `{ prUrl, shippedAt, evaluatedAt, result, baseline, files }`. `shippedAt` is when the PR was merged/deployed — evaluation measures from there, not from `created_at`. |

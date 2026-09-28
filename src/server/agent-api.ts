@@ -32,7 +32,10 @@ export async function readJsonObject(request: Request): Promise<Record<string, u
 
 const MAX_TEXT = 100_000;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const DATETIME_RE = /^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$/;
+// Accepts SQLite-style (`2026-10-01 12:34:56`) and ISO/GitHub-style UTC (`2026-10-01T12:34:56Z`,
+// with optional millis); either way it's stored the way SQLite's datetime('now') writes created_at,
+// so date windows compare consistently.
+const DATETIME_RE = /^(\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2})(:\d{2})?(?:\.\d+)?Z?)?$/;
 
 /** Field validators: each returns the value, or throws a message naming the field. */
 export const field = {
@@ -55,8 +58,11 @@ export const field = {
   },
   optDatetime(body: Record<string, unknown>, key: string): string | null {
     const v = field.optText(body, key);
-    if (v !== null && !DATETIME_RE.test(v)) throw `${key} must be YYYY-MM-DD or YYYY-MM-DD HH:MM[:SS] (UTC)`;
-    return v;
+    if (v === null) return null;
+    const m = DATETIME_RE.exec(v);
+    if (!m) throw `${key} must be a UTC date/time: YYYY-MM-DD[ HH:MM[:SS]] or ISO (…T…Z)`;
+    const [, date, hm, sec] = m;
+    return hm ? `${date} ${hm}${sec ?? ':00'}` : date!;
   },
   optUrl(body: Record<string, unknown>, key: string): string | null {
     const v = field.optText(body, key);

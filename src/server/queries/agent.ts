@@ -7,14 +7,32 @@ export interface AiReport {
   periodFrom: string;
   periodTo: string;
   summaryMd: string;
+  /** The agent's own structured carry-over between runs (e.g. its research backlog). */
+  findings: unknown;
 }
 export async function listReports(env: Env, limit = 20): Promise<AiReport[]> {
   const { results } = await env.ANALYTICS.prepare(
-    `SELECT id, created_at, period_from, period_to, summary_md FROM ai_reports ORDER BY created_at DESC LIMIT ?1`,
+    `SELECT id, created_at, period_from, period_to, summary_md, findings_json FROM ai_reports ORDER BY created_at DESC LIMIT ?1`,
   )
     .bind(limit)
-    .all<{ id: string; created_at: string; period_from: string; period_to: string; summary_md: string }>();
-  return results.map((r) => ({ id: r.id, createdAt: r.created_at, periodFrom: r.period_from, periodTo: r.period_to, summaryMd: r.summary_md }));
+    .all<{ id: string; created_at: string; period_from: string; period_to: string; summary_md: string; findings_json: string | null }>();
+  return results.map((r) => ({
+    id: r.id,
+    createdAt: r.created_at,
+    periodFrom: r.period_from,
+    periodTo: r.period_to,
+    summaryMd: r.summary_md,
+    findings: parseJson(r.findings_json),
+  }));
+}
+
+function parseJson(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
 
 export interface AiChange {
@@ -72,6 +90,78 @@ function parseFiles(raw: string | null): string[] {
   } catch {
     return [];
   }
+}
+
+// ---- Windowed metrics (GET /api/agent/metrics/) ----
+
+/**
+ * Everything over an explicit [from, to] date window (UTC dates, inclusive), so the agent can
+ * compare a page before vs after a change's shipped_at. Unlike /api/export's views, nothing
+ * here is all-time and GSC has no impression threshold â€” early on, low-volume impressions are
+ * the only search signal there is. Bot sessions are excluded throughout.
+ */
+export async function windowMetrics(env: Env, from: string, to: string, page: string | null) {
+  const db = env.ANALYTICS;
+  // D1 rejects a bind count that doesn't match the placeholders, so page-filtered queries bind
+  // ?3 only when their SQL actually contains it; the site-wide totals never take a page.
+  const withPage = (stmt: D1PreparedStatement) => (page ? stmt.bind(from, to, page) : stmt.bind(from, to));
+  const pageFilter = page ? 'AND p.path = ?3' : '';
+  // GSC stores full URLs (https://host/path/); first-party pageviews store the bare path. Strip
+  // scheme + host and compare exactly — a suffix match would make page=/ match every URL.
+  const gscPath = `substr(substr(g.page, instr(g.page, '://') + 3), instr(substr(g.page, instr(g.page, '://') + 3), '/'))`;
+  const gscPageFilter = page ? `AND ${gscPath} = ?3` : '';
+
+  const [totals, pages, events, gsc] = await Promise.all([
+    db
+      .prepare(
+        `SELECT
+           (SELECT count(*) FROM sessions WHERE is_bot = 0 AND date(started_at) BETWEEN ?1 AND ?2) AS sessions,
+           (SELECT count(*) FROM leads_snapshot WHERE date(created_at) BETWEEN ?1 AND ?2) AS leads`,
+      )
+      .bind(from, to)
+      .first<{ sessions: number; leads: number }>(),
+    withPage(
+      db.prepare(
+        `SELECT p.path,
+           count(DISTINCT p.session_id) AS sessions,
+           count(*) AS pageviews,
+           round(avg(p.engaged_ms) / 1000.0, 1) AS avg_engaged_s,
+           round(avg(p.max_scroll_pct), 0) AS avg_scroll_pct,
+           count(DISTINCT CASE WHEN s.entry_page = p.path THEN s.id END) AS entries,
+           count(DISTINCT l.lead_id) AS leads_from_viewing_sessions
+         FROM pageviews p
+         JOIN sessions s ON s.id = p.session_id AND s.is_bot = 0
+         LEFT JOIN leads_snapshot l ON l.session_id = p.session_id
+         WHERE date(p.at) BETWEEN ?1 AND ?2 ${pageFilter}
+         GROUP BY p.path
+         ORDER BY sessions DESC
+         LIMIT 200`,
+      ),
+    ).all(),
+    withPage(
+      db.prepare(
+        `SELECT e.name, count(*) AS events, count(DISTINCT e.session_id) AS sessions
+         FROM events e
+         JOIN sessions s ON s.id = e.session_id AND s.is_bot = 0
+         WHERE date(e.at) BETWEEN ?1 AND ?2 ${page ? 'AND e.path = ?3' : ''}
+         GROUP BY e.name
+         ORDER BY sessions DESC`,
+      ),
+    ).all(),
+    withPage(
+      db.prepare(
+        `SELECT g.page, g.query, sum(g.clicks) AS clicks, sum(g.impressions) AS impressions,
+           round(sum(g.position * g.impressions) / max(sum(g.impressions), 1), 1) AS avg_position
+         FROM gsc_daily g
+         WHERE g.date BETWEEN ?1 AND ?2 ${gscPageFilter}
+         GROUP BY g.page, g.query
+         ORDER BY impressions DESC
+         LIMIT 500`,
+      ),
+    ).all(),
+  ]);
+
+  return { range: { from, to, page }, totals, pages: pages.results, events: events.results, gsc: gsc.results };
 }
 
 // ---- Agent write-back (POST/PATCH /api/agent/*) ----
