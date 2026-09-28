@@ -103,6 +103,18 @@ See `migrations/0001_init.sql` for the full DDL and comments. Summary:
 
 Views for querying (`v_page_performance`, `v_source_performance`, `v_funnel_daily`, `v_search_opportunities`, `v_lead_journeys`) are what `GET /api/export` returns.
 
+## Agent API
+
+Everything is behind the same Access check (the agent sends its service token's `CF-Access-Client-Id`/`CF-Access-Client-Secret` headers). `trailingSlash: 'always'` applies — note the trailing `/`. Writes require `content-type: application/json`.
+
+| Route | Purpose |
+|---|---|
+| `GET /api/export/?from&to` | The analysis views. |
+| `GET /api/agent/state/` | Start-of-run context: per-source sync freshness, latest report, change log. |
+| `POST /api/agent/reports/` | `{ periodFrom, periodTo, summaryMd, findings? }` → `{ id }` |
+| `POST /api/agent/changes/` | `{ description, hypothesis, metric, baseline?, files?, prUrl? }` → `{ id }` |
+| `PATCH /api/agent/changes/:id/` | Any of `{ prUrl, shippedAt, evaluatedAt, result, baseline, files }`. `shippedAt` is when the PR was merged/deployed — evaluation measures from there, not from `created_at`. |
+
 ## Privacy
 
 The analytics data is **pseudonymous, not anonymous**: `visitor_id` persists per browser, and `session_id`/`lead_id` join straight back to the name/phone stored in `mortgage-leads`. There's no consent banner (the owner has already decided against a full legal review of the main site's privacy/tracking wording — see `mortgage-website/OWNER-TODO.md`); `mortgage-website/src/pages/privacy.astro` carries a short note about this pseudonymous tracking. Raw `pageviews`/`events` are retained 13 months (`src/collectors/prune.ts`); aggregates are kept indefinitely.

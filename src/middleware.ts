@@ -1,5 +1,5 @@
 /**
- * Gates EVERY route (pages, /api/sync/*, /api/export) behind Cloudflare Access — not page by
+ * Gates EVERY route (pages, /api/sync/*, /api/export, /api/agent/*) behind Cloudflare Access — not page by
  * page. Access itself blocks unauthenticated browsers before they reach the Worker, but a
  * request that somehow reaches us without a valid JWT is rejected here too (fail closed).
  */

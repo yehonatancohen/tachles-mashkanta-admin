@@ -40,9 +40,9 @@ const [reports, changes] = await Promise.all([listReports(env), listChanges(env)
     <h2>יומן שינויים</h2>
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>תאריך</th><th>תיאור</th><th>השערה</th><th>מדד</th><th class="num">בסיס</th><th>תוצאה</th></tr></thead>
+        <thead><tr><th>תאריך</th><th>תיאור</th><th>השערה</th><th>מדד</th><th class="num">בסיס</th><th>PR</th><th>תוצאה</th></tr></thead>
         <tbody>
-          {changes.length === 0 && <tr><td colspan="6" class="empty">אין שינויים רשומים עדיין.</td></tr>}
+          {changes.length === 0 && <tr><td colspan="7" class="empty">אין שינויים רשומים עדיין.</td></tr>}
           {changes.map((c) => (
             <tr>
               <td class="num">{c.createdAt.slice(0, 10)}</td>
@@ -50,7 +50,11 @@ const [reports, changes] = await Promise.all([listReports(env), listChanges(env)
               <td>{c.hypothesis}</td>
               <td>{c.metric}</td>
               <td class="num">{c.baseline ?? '—'}</td>
-              <td>{c.result ?? (c.evaluatedAt ? 'בבדיקה' : 'ממתין לנתונים')}</td>
+              <td>
+                {c.prUrl ? <a href={c.prUrl} target="_blank" rel="noopener noreferrer">PR</a> : '—'}
+                {c.shippedAt ? ` · עלה ${c.shippedAt.slice(0, 10)}` : c.prUrl ? ' · ממתין לאישור' : ''}
+              </td>
+              <td>{c.result ?? (!c.shippedAt ? 'טרם עלה' : c.evaluatedAt ? 'בבדיקה' : 'ממתין לנתונים')}</td>
             </tr>
           ))}
         </tbody>

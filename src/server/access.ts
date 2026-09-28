@@ -4,8 +4,8 @@
  * a Worker reachable by a path Access doesn't cover, etc. must still fail closed).
  *
  * Two identities can present a valid JWT here: a human (the "Allow <owner email>" policy) and
- * the AI agent's service token (the "Service Auth" policy) used against /api/export and
- * /api/sync/*. Both are treated as authorized; only the human is shown in the UI's "signed in as".
+ * the AI agent's service token (the "Service Auth" policy) used against /api/export,
+ * /api/agent/* and /api/sync/*. Both are treated as authorized; only the human is shown in the UI's "signed in as".
  */
 import type { Env } from './env';
 
