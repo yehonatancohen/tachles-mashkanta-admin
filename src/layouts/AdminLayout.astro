@@ -54,5 +54,10 @@ const email = Astro.locals.access?.email ?? '';
         <slot />
       </main>
     </div>
+    <script>
+      // On mobile the nav is a horizontally scrolling strip; without this the current
+      // page's link can land off-screen with nothing visibly highlighted (looks broken).
+      document.querySelector('.navlink[aria-current="page"]')?.scrollIntoView({ inline: 'center', block: 'nearest' });
+    </script>
   </body>
 </html>
