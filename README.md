@@ -70,7 +70,7 @@ npx wrangler d1 migrations apply tachles-analytics --local --persist-to ../.wran
 npm run dev   # in both projects
 ```
 
-Browse the site, submit a test lead, then check this admin's `/journeys/` — the session should show up with its pageviews/events, and the lead should link to it.
+Browse the site, submit a test lead, then check this admin's `/journeys/` — the session should show up with its pageviews/events, and the lead should link to it. Do this **without** mortgage-website's test mode on: test mode (`/admin/test-mode/` on the site) deliberately keeps a browser's visits out of `tachles-analytics` and stores its leads with `is_test = 1`, which every query here skips.
 
 To test the cron collectors locally:
 ```
