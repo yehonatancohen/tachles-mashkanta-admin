@@ -1,6 +1,7 @@
 /** Copies a name/phone-free snapshot of recent leads from mortgage-leads into leads_snapshot,
  * so the AI agent can join traffic/behavior to lead outcomes without touching PII. Upserts on
- * lead_id, so re-running (the daily cron re-pulls a window) is safe. */
+ * lead_id, so re-running (the daily cron re-pulls a window) is safe. Owner test leads
+ * (is_test = 1, see mortgage-website's /admin/test-mode/) are never copied. */
 import type { Env } from '../server/env';
 import type { Collector, DateRange } from './types';
 
@@ -26,9 +27,13 @@ export const leadsSnapshotCollector: Collector = {
     return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
   },
   async run(env: Env, range: DateRange) {
+    // Drop any test lead a snapshot already holds (e.g. one marked is_test after it was copied).
+    const { results: tests } = await env.LEADS.prepare(`SELECT id FROM leads WHERE is_test = 1`).all<{ id: string }>();
+    if (tests.length > 0) await env.ANALYTICS.batch(tests.map((t) => env.ANALYTICS.prepare(`DELETE FROM leads_snapshot WHERE lead_id = ?1`).bind(t.id)));
+
     const { results } = await env.LEADS.prepare(
       `SELECT id, created_at, kind, tier, score, status, outcome, session_id, entry_page, utm_json
-       FROM leads WHERE date(created_at) BETWEEN ?1 AND ?2`,
+       FROM leads WHERE is_test = 0 AND date(created_at) BETWEEN ?1 AND ?2`,
     )
       .bind(range.from, range.to)
       .all<LeadForSnapshot>();
