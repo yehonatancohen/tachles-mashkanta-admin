@@ -110,6 +110,10 @@ a {
     overflow-x: auto;
     gap: var(--space-2);
     padding-block-end: var(--space-1);
+    /* Edge fade hints that this row scrolls — without it, links past the
+       viewport just look clipped/missing rather than reachable. */
+    mask-image: linear-gradient(to right, transparent, black 1.5rem, black calc(100% - 1.5rem), transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, black 1.5rem, black calc(100% - 1.5rem), transparent);
   }
 }
 .navlink {
