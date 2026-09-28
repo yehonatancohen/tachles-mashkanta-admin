@@ -11,7 +11,7 @@ Read the website repo's `PRODUCT.md` and `DESIGN.md` (see Setup for locating it)
 
 ## Hard rules
 
-- **Never merge, deploy, or push to `master`** in either repo. You open PRs; the owner merges and deploys.
+- **Never merge, deploy, or push to `master`** in either repo. You open PRs; the owner merges. **Merging to `master` of the website repo deploys to production automatically** (Cloudflare Workers Builds, GitHub check "Workers Builds: mortgage-website"), and every PR branch gets a preview build under the same check name.
 - **At most one open improvement PR and one open data-refresh PR at a time.** If a change has a `prUrl` and no `shippedAt` and its PR is still open, do not open another improvement PR this run. The data-refresh PR (Step 2) is tracked separately. Still write the report and proposals.
 - **Never print secrets.** Don't echo env vars, don't log request headers, don't put them in files, PRs or reports.
 - **Never touch:** `config/scoring.ts`, `src/config/consent.ts`, `src/pages/api/**` (lead, OTP, alert, contact, beacon), `src/server/**`, `src/pages/privacy.astro`, `src/pages/terms.astro`, `src/pages/admin/**`, `wrangler.jsonc`. Also never change anything in the tachles-admin repo. **Existing values in `data/*.json` change only through Step 2**, never as part of an improvement PR.
@@ -80,15 +80,15 @@ Rules for this step:
 
 ## Step 3 — Close the loop on earlier changes
 
-Also check `findings.dataPr` (Step 2's PR): if it was merged, verify on the live site that the new values show (e.g. `/ribit-mashkanta-hayom/` shows the new month) and clear it; if merged but not live, ask the owner to deploy; if closed, clear it and note why in `findings.lessons`.
+Also check `findings.dataPr` (Step 2's PR): if it's still open, check its preview build the same way as for an open improvement PR (step 1 below); if it was merged, verify on the live site that the new values show (e.g. `/ribit-mashkanta-hayom/` shows the new month) and clear it; if merged but not live, check the merge commit's Workers Builds result (as in step 1 below); if closed, clear it and note why in `findings.lessons`.
 
 For every change in `state.changes` without `evaluatedAt`:
 
 0. **Proposal only** (no `prUrl`, no `shippedAt`): leave it; Step 5 decides whether to reuse or retire it.
 1. **Has a PR, not shipped** (`prUrl` set, `shippedAt` null): check the PR's state and `mergedAt` (with `gh pr view <url> --json state,mergedAt` or the GitHub integration's PR tool; if neither works, check whether the branch commit is in `origin/master` of the website repo).
-   - **Open** → it's the current open PR. Mention it in the report ("ממתין לסקירה שלך").
+   - **Open** → it's the current open PR. Check its preview build: the "Workers Builds: mortgage-website" check run on the PR's head commit (`GET https://api.github.com/repos/yehonatancohen/mortgage-calculator/commits/<sha>/check-runs` — public repo, no auth needed). Mention it in the report ("ממתין לסקירה שלך"), with the build result. A failure that started and completed in the same second never ran the build (Cloudflare-side); say so, and suggest "Retry build" in the dashboard. A failure that actually ran means your branch breaks the build — fix it on the branch this run (same checks as Step 6).
    - **Closed without merge** → `PATCH` with `result: "נדחה — ה-PR נסגר בלי מיזוג"` and `evaluatedAt` now. Read any PR comments and record the reason in `findings.lessons` so you don't repeat it.
-   - **Merged** → verify it's **live**: fetch the affected live URL(s) and check for the change (use `findings.liveChecks[<changeId>]`, which you saved when opening the PR). If live, `PATCH shippedAt` with the PR's `mergedAt` (the API accepts GitHub's ISO form as-is). If merged but not live, don't set `shippedAt`; tell the owner in the report to deploy (`npm run build && npx wrangler deploy` in mortgage-website).
+   - **Merged** → verify it's **live**: fetch the affected live URL(s) and check for the change (use `findings.liveChecks[<changeId>]`, which you saved when opening the PR). If live, `PATCH shippedAt` with the PR's `mergedAt` (the API accepts GitHub's ISO form as-is). If merged but not live, don't set `shippedAt`; look up the Workers Builds check run on the PR's merge commit (`merge_commit_sha`): still running → re-check next run; **failed** → tell the owner in the report that production did not deploy, with the build's `details_url` (the live site is still on the previous version).
 2. **Shipped, not yet evaluated**: evaluate once enough time has passed.
    - **Search/content changes** (new or expanded pages, titles, schema): wait **≥ 42 days** after `shippedAt`. Compare the 28 days after vs the 28 days before (or vs baseline 0 for a new page) using `/api/agent/metrics/` with `page=`.
    - **UX/funnel changes** (calculator, lead gate, CTAs, layout): wait **≥ 14 days** and require ≥ 100 sessions on the affected page after shipping. Compare equal-length windows before vs after.
@@ -155,7 +155,7 @@ In the website repo:
 3. Any figure the content needs must already be in `data/*.json` from an official source, or be added now under the official-sources rule. If you can't get a figure from the official source, write the content without it (explain the mechanism, link the official page) rather than quoting an unofficial number.
 4. Run `npm ci`, `npm run check`, `npm test`, `npm run build`. `npm test` and `npm run build` must pass. `npm run check` may already have errors on `master`: run it on `master` first, and your branch must add **no new** errors. If something fails and you can't fix it cleanly, don't open the PR; report why.
 5. Commit, push the branch, and open a PR — with `gh pr create` or the GitHub integration's create-PR tool. If neither is available, push the branch and use its compare URL (`https://github.com/yehonatancohen/mortgage-calculator/compare/master...<branch>`) as the PR link.
-6. PR description (Hebrew is fine): the hypothesis, the metric and baseline, the `ai_changes` id, **every factual claim with its official source URL and date** so the owner can check it, and the live URL(s) to check after deploy.
+6. PR description (Hebrew is fine): the hypothesis, the metric and baseline, the `ai_changes` id, **every factual claim with its official source URL and date** so the owner can check it, and the live URL(s) to check after merge (merging deploys automatically).
 7. `PATCH` the top proposal's existing row (from Step 5) with `prUrl`, set its backlog status to `in_pr`, and save `findings.liveChecks[<changeId>] = { url, contains: "<a short distinctive string from the change>" }`.
 
 ## Step 7 — Report
@@ -182,7 +182,7 @@ In the website repo:
 (1–3, best first)
 
 ## מה נדרש ממך
-(e.g. review PR <link>, deploy merged PR, a stale source to fix)
+(e.g. review PR <link>, a failed production build after a merge, a stale source to fix)
 ```
 
 `findings` carries your memory between runs. Start from `latestReport.findings`, update it, and send the whole object:
