@@ -1,0 +1,233 @@
+---
+/** All site actions over time, with a 24h / 7d / 30d / max range switch, a legend that toggles
+ * series, and a hover crosshair + tooltip. The one chart in the console with client JS: the owner
+ * asked to see every action and scrub through time, which a static SVG + <title> can't do. */
+import type { ActivityData } from '../server/queries/activity';
+import { eventLabel, NOISE_EVENTS } from '../server/event-labels';
+
+interface Props {
+  data: ActivityData;
+}
+const { data } = Astro.props;
+
+// Fixed order → fixed color per entity, independent of which series are toggled on.
+const ORDER = ['sessions', 'lead_submitted', 'lead_gate_view', 'result_view', 'pageviews', 'calculator_used', 'step1_complete', 'otp_verified', 'otp_sent', 'rate_alert_submitted', 'rate_alert_view', 'question_skipped'];
+const DEFAULT_ON = new Set(['sessions', 'lead_submitted', 'lead_gate_view', 'result_view']);
+const LABELS: Record<string, string> = { sessions: 'ביקורים', pageviews: 'צפיות בדפים', lead_submitted: 'לידים' };
+
+const keys = [...new Set([...data.daily.series, ...data.hourly.series].map((s) => s.key))].sort((a, b) => {
+  const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b);
+  if (NOISE_EVENTS.has(a) !== NOISE_EVENTS.has(b)) return NOISE_EVENTS.has(a) ? 1 : -1;
+  return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a.localeCompare(b);
+});
+const meta = keys.map((key, i) => ({
+  key,
+  label: LABELS[key] ?? eventLabel(key),
+  color: `var(--c-act-${Math.min(i + 1, 12)})`,
+  on: DEFAULT_ON.has(key),
+}));
+const payload = JSON.stringify({ data, meta }).replace(/</g, '\\u003c');
+---
+
+<div class="act-chart" data-act-chart>
+  <div class="act-chart__bar">
+    <div class="period-picker" role="group" aria-label="טווח זמן לגרף">
+      <button type="button" class="chip" data-range="24h" aria-pressed="false">24 שעות</button>
+      <button type="button" class="chip" data-range="7d" aria-pressed="true">7 ימים</button>
+      <button type="button" class="chip" data-range="30d" aria-pressed="false">30 ימים</button>
+      <button type="button" class="chip" data-range="max" aria-pressed="false">הכול</button>
+    </div>
+  </div>
+  <div class="act-chart__plot" dir="ltr">
+    <svg class="chart" viewBox="0 0 720 260" role="img" aria-label="פעולות באתר לאורך זמן"></svg>
+    <div class="act-chart__tip" dir="rtl" role="status" aria-live="polite" hidden></div>
+  </div>
+  <div class="act-chart__legend" role="group" aria-label="סדרות להצגה">
+    {meta.map((m) => (
+      <button type="button" class="act-chart__key" data-key={m.key} aria-pressed={m.on ? 'true' : 'false'}>
+        <span class="chart-legend__swatch" style={`background: ${m.color}`}></span>
+        <span>{m.label}</span>
+        <span class="act-chart__total" data-total></span>
+      </button>
+    ))}
+  </div>
+  <script type="application/json" data-act-payload set:html={payload} />
+</div>
+
+<script>
+  type Grid = { buckets: string[]; series: { key: string; values: number[] }[] };
+  type Meta = { key: string; label: string; color: string; on: boolean };
+  type Payload = { data: { hourly: Grid; daily: Grid }; meta: Meta[] };
+
+  const NS = 'http://www.w3.org/2000/svg';
+  const H = 260;
+  let W = 720;
+  const PAD = { top: 12, right: 12, bottom: 28, left: 40 };
+  const TZ = 'Asia/Jerusalem';
+  const fmtDay = new Intl.DateTimeFormat('he-IL', { timeZone: TZ, weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' });
+  const fmtTickHour = new Intl.DateTimeFormat('he-IL', { timeZone: TZ, hour: '2-digit', minute: '2-digit', hour12: false });
+  const fmtTickDay = new Intl.DateTimeFormat('he-IL', { timeZone: TZ, day: '2-digit', month: '2-digit' });
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-act-chart]')) {
+    const { data, meta } = JSON.parse(root.querySelector('[data-act-payload]')!.textContent!) as Payload;
+    const svg = root.querySelector('svg')!;
+    const tip = root.querySelector<HTMLElement>('.act-chart__tip')!;
+    const on = new Set(meta.filter((m) => m.on).map((m) => m.key));
+    let range = '7d';
+
+    const view = () => {
+      const g = range === '24h' || range === '7d' ? data.hourly : data.daily;
+      const take = range === '24h' ? 24 : range === '7d' ? 168 : range === '30d' ? 30 : g.buckets.length;
+      const from = Math.max(0, g.buckets.length - take);
+      const hourly = g === data.hourly;
+      const series = new Map(g.series.map((s) => [s.key, s.values.slice(from)]));
+      return { buckets: g.buckets.slice(from), series, hourly };
+    };
+
+    const el = (tag: string, attrs: Record<string, string | number>) => {
+      const e = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, String(v));
+      return e;
+    };
+
+    let current = view();
+
+    function draw() {
+      // Draw in real pixels (viewBox = rendered width) so text and height stay fixed at any width.
+      W = Math.max(280, Math.round(svg.getBoundingClientRect().width) || 720);
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      current = view();
+      const { buckets, series, hourly } = current;
+      const n = buckets.length;
+      const visible = meta.filter((m) => on.has(m.key));
+      const max = Math.max(1, ...visible.flatMap((m) => series.get(m.key) ?? []));
+      const innerW = W - PAD.left - PAD.right, innerH = H - PAD.top - PAD.bottom;
+      const x = (i: number) => PAD.left + (n <= 1 ? innerW / 2 : (innerW * i) / (n - 1));
+      const y = (v: number) => PAD.top + innerH - (innerH * v) / max;
+
+      svg.replaceChildren();
+      // Recessive y reference: 0, half, max.
+      for (const v of [0, max / 2, max]) {
+        const yy = y(v);
+        svg.appendChild(el('line', { class: v === 0 ? 'axis' : 'grid', x1: PAD.left, x2: W - PAD.right, y1: yy, y2: yy }));
+        const t = el('text', { class: 'tick', x: PAD.left - 6, y: yy + 4, 'text-anchor': 'end' });
+        t.textContent = Number.isInteger(v) ? String(v) : v.toFixed(1);
+        svg.appendChild(t);
+      }
+      // X ticks: ~6 evenly spaced bucket labels.
+      const every = Math.max(1, Math.ceil(n / Math.max(2, Math.floor(W / 130))));
+      for (let i = 0; i < n; i += every) {
+        const t = el('text', { class: 'tick', x: x(i), y: H - 8, 'text-anchor': i === 0 ? 'start' : 'middle' });
+        const d = new Date(buckets[i]);
+        t.textContent = hourly ? (range === '24h' ? fmtTickHour.format(d) : fmtTickDay.format(d) + ' ' + fmtTickHour.format(d)) : fmtTickDay.format(d);
+        svg.appendChild(t);
+      }
+      for (const m of visible) {
+        const vals = series.get(m.key) ?? new Array(n).fill(0);
+        const d = vals.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ');
+        const p = el('path', { class: 'series', d });
+        p.style.stroke = m.color;
+        svg.appendChild(p);
+      }
+      svg.appendChild(el('line', { class: 'crosshair', x1: 0, x2: 0, y1: PAD.top, y2: PAD.top + innerH, visibility: 'hidden' }));
+
+      // Legend totals for the selected range.
+      for (const btn of root.querySelectorAll<HTMLButtonElement>('.act-chart__key')) {
+        const vals = series.get(btn.dataset.key!) ?? [];
+        btn.querySelector('[data-total]')!.textContent = String(vals.reduce((a, b) => a + b, 0));
+      }
+      hide();
+    }
+
+    function hide() {
+      tip.hidden = true;
+      svg.querySelector('.crosshair')?.setAttribute('visibility', 'hidden');
+      svg.querySelectorAll('.hover-dot').forEach((d) => d.remove());
+    }
+
+    function show(ev: PointerEvent) {
+      const { buckets, series, hourly } = current;
+      const n = buckets.length;
+      if (!n) return;
+      const rect = svg.getBoundingClientRect();
+      const vx = ((ev.clientX - rect.left) / rect.width) * W;
+      const innerW = W - PAD.left - PAD.right;
+      const i = n <= 1 ? 0 : Math.min(n - 1, Math.max(0, Math.round(((vx - PAD.left) / innerW) * (n - 1))));
+      const px = PAD.left + (n <= 1 ? innerW / 2 : (innerW * i) / (n - 1));
+      const cross = svg.querySelector('.crosshair')!;
+      cross.setAttribute('x1', String(px));
+      cross.setAttribute('x2', String(px));
+      cross.setAttribute('visibility', 'visible');
+
+      const visible = meta.filter((m) => on.has(m.key));
+      const innerH = H - PAD.top - PAD.bottom;
+      const max = Math.max(1, ...visible.flatMap((m) => series.get(m.key) ?? []));
+      svg.querySelectorAll('.hover-dot').forEach((d) => d.remove());
+      for (const m of visible) {
+        const v = series.get(m.key)?.[i] ?? 0;
+        const c = el('circle', { class: 'hover-dot', cx: px, cy: PAD.top + innerH - (innerH * v) / max, r: 4 });
+        c.style.fill = m.color;
+        svg.appendChild(c);
+      }
+
+      const d = new Date(buckets[i]);
+      // LRI…PDI keeps the "14:00–15:00" range left-to-right inside the Hebrew line.
+      const when = hourly ? `${fmtDay.format(d)} · ⁦${fmtTickHour.format(d)}–${fmtTickHour.format(new Date(d.getTime() + 3_600_000))}⁩` : fmtDay.format(d);
+      tip.replaceChildren();
+      const head = document.createElement('div');
+      head.className = 'act-chart__tip-head';
+      head.textContent = when;
+      tip.appendChild(head);
+      for (const m of visible) {
+        const row = document.createElement('div');
+        row.className = 'act-chart__tip-row';
+        const sw = document.createElement('span');
+        sw.className = 'chart-legend__swatch';
+        sw.style.background = m.color;
+        const label = document.createElement('span');
+        label.textContent = m.label;
+        const val = document.createElement('strong');
+        val.textContent = String(series.get(m.key)?.[i] ?? 0);
+        row.appendChild(sw);
+        row.appendChild(label);
+        row.appendChild(val);
+        tip.appendChild(row);
+      }
+      tip.hidden = false;
+      // Keep the tooltip beside the crosshair, flipping sides near the edges.
+      const plot = tip.parentElement!.getBoundingClientRect();
+      const cx = rect.left - plot.left + (px / W) * rect.width;
+      const tw = tip.offsetWidth;
+      tip.style.left = `${cx + 12 + tw > plot.width ? Math.max(0, cx - 12 - tw) : cx + 12}px`;
+    }
+
+    let lastW = 0;
+    new ResizeObserver(() => {
+      const w = Math.round(svg.getBoundingClientRect().width);
+      if (w && w !== lastW) {
+        lastW = w;
+        draw();
+      }
+    }).observe(svg);
+    svg.addEventListener('pointermove', show);
+    svg.addEventListener('pointerdown', show);
+    svg.addEventListener('pointerleave', hide);
+
+    for (const b of root.querySelectorAll<HTMLButtonElement>('[data-range]')) {
+      b.addEventListener('click', () => {
+        range = b.dataset.range!;
+        root.querySelectorAll('[data-range]').forEach((o) => o.setAttribute('aria-pressed', String(o === b)));
+        draw();
+      });
+    }
+    for (const b of root.querySelectorAll<HTMLButtonElement>('.act-chart__key')) {
+      b.addEventListener('click', () => {
+        const k = b.dataset.key!;
+        on.has(k) ? on.delete(k) : on.add(k);
+        b.setAttribute('aria-pressed', String(on.has(k)));
+        draw();
+      });
+    }
+    draw();
+  }
+</script>

@@ -3,6 +3,8 @@ export const prerender = false;
 import AdminLayout from '../../layouts/AdminLayout.astro';
 import { getEnv } from '../../server/env';
 import { sessionById, sessionTimeline } from '../../server/queries/journeys';
+import { eventLabel } from '../../server/event-labels';
+import { fmtTime } from '../../server/time';
 
 const env = getEnv();
 const { id } = Astro.params;
@@ -41,9 +43,9 @@ if (!session) {
           <ol style="display:grid; gap: var(--space-2); list-style:none; padding:0; margin:0;">
             {timeline.map((t) => (
               <li class="card" style="display:flex; gap: var(--space-4); align-items:baseline;">
-                <span style="color: var(--c-text-3); font-size: var(--text-xs); white-space:nowrap;">{t.at.slice(11, 19)}</span>
+                <span style="color: var(--c-text-3); font-size: var(--text-xs); white-space:nowrap;">{fmtTime(t.at)}</span>
                 <span class="badge" style={t.kind === 'pageview' ? 'background:var(--c-accent-soft); color:var(--c-accent-ink);' : 'background:var(--c-surface-2); color:var(--c-text-2);'}>{t.kind === 'pageview' ? 'צפייה' : 'אירוע'}</span>
-                <span><strong>{t.label}</strong>{t.detail ? ` · ${t.detail}` : ''}</span>
+                <span><strong><bdi>{t.kind === 'event' ? eventLabel(t.label) : t.label}</bdi></strong>{t.detail ? ` · ${t.detail}` : ''}</span>
               </li>
             ))}
           </ol>

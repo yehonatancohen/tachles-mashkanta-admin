@@ -43,23 +43,6 @@ export async function overviewKpis(env: Env, period: Period): Promise<{ current:
   return { current, previous };
 }
 
-export interface DailyPoint {
-  date: string;
-  sessions: number;
-  leads: number;
-}
-
-export async function dailySessionsAndLeads(env: Env, period: Period): Promise<DailyPoint[]> {
-  const { results } = await env.ANALYTICS.prepare(
-    `SELECT date(started_at) AS date, count(*) AS sessions, count(lead_id) AS leads
-     FROM sessions WHERE date(started_at) BETWEEN ?1 AND ?2
-     GROUP BY date ORDER BY date`,
-  )
-    .bind(period.from, period.to)
-    .all<DailyPoint>();
-  return results;
-}
-
 const FUNNEL_STEPS = ['page_view', 'step1_complete', 'result_view', 'lead_gate_view', 'lead_submitted'] as const;
 const FUNNEL_LABELS: Record<string, string> = {
   page_view: 'כניסה לאתר',

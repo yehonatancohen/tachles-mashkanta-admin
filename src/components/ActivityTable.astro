@@ -1,0 +1,56 @@
+---
+/** Visit history: one row per session, newest first, times in Israel time. Used by the overview
+ * (recent activity) and /journeys (full list). */
+import type { JourneyRow } from '../server/queries/journeys';
+import { eventLabel, NOISE_EVENTS } from '../server/event-labels';
+import { fmtDateTime, fmtDuration } from '../server/time';
+
+interface Props {
+  rows: JourneyRow[];
+}
+const { rows } = Astro.props;
+const DEVICE: Record<string, string> = { mobile: 'נייד', tablet: 'טאבלט', desktop: 'מחשב' };
+---
+
+<div class="table-wrap">
+  <table class="data-table activity-table">
+    <thead>
+      <tr>
+        <th>מתי</th>
+        <th>מקור</th>
+        <th>דף כניסה</th>
+        <th class="num">משך ביקור</th>
+        <th class="num">זמן פעיל</th>
+        <th class="num">דפים</th>
+        <th>פעולות</th>
+        <th>מכשיר</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {rows.length === 0 && <tr><td colspan="9" class="empty">אין ביקורים לתקופה זו עדיין.</td></tr>}
+      {rows.map((r) => {
+        const actions = r.actions.filter((a) => !NOISE_EVENTS.has(a) && a !== 'lead_submitted');
+        return (
+          <tr class={r.leadId ? 'activity-table__lead' : undefined}>
+            <td class="num nowrap">{fmtDateTime(r.startedAt)}</td>
+            <td><bdi>{r.source}</bdi></td>
+            <td class="activity-table__page"><bdi>{r.entryPage}</bdi></td>
+            <td class="num nowrap">{fmtDuration(r.durationS)}</td>
+            <td class="num nowrap">{fmtDuration(r.engagedMs / 1000)}</td>
+            <td class="num">{r.pageviews}</td>
+            <td>
+              <span class="action-chips">
+                {r.leadId && <span class="badge badge--tier-a">ליד ✓</span>}
+                {actions.map((a) => <span class="badge badge--tier-c">{eventLabel(a)}</span>)}
+                {!r.leadId && actions.length === 0 && <span class="muted">—</span>}
+              </span>
+            </td>
+            <td class="nowrap">{r.device ? (DEVICE[r.device] ?? r.device) : '—'}</td>
+            <td class="nowrap"><a href={`/journeys/${r.id}/`}>מסע ⟵</a></td>
+          </tr>
+        );
+      })}
+    </tbody>
+  </table>
+</div>
