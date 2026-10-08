@@ -560,6 +560,7 @@ a {
 /* ---------- Disclosure rows (AI reports, change log) ---------- */
 .disclosure-list {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--space-2);
 }
 .disclosure {
@@ -815,5 +816,207 @@ a {
 }
 .act-chart__total {
   font-variant-numeric: tabular-nums;
+  color: var(--c-text-3);
+}
+
+/* ---------- Primary / large button (the one thing the owner should click) ---------- */
+.btn--primary {
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+  font-weight: var(--fw-bold);
+}
+.btn--primary:hover {
+  background: var(--c-accent-hover);
+}
+.btn--lg {
+  min-block-size: var(--control-h);
+  padding-inline: var(--space-8);
+  font-size: var(--text-md);
+}
+
+.page-head__meta {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Agent brief: headline, a few one-liners, the action ---------- */
+.brief {
+  background: var(--c-surface);
+  border: var(--border-w) solid var(--c-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-8) var(--space-6);
+}
+.brief__headline {
+  margin: 0;
+  max-inline-size: 34ch;
+  font-size: var(--text-2xl);
+  font-weight: var(--fw-bold);
+  line-height: var(--lh-heading);
+  text-wrap: balance;
+}
+.brief__points {
+  list-style: none;
+  margin: var(--space-6) 0 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-3);
+  max-inline-size: var(--measure);
+}
+.brief__point {
+  display: grid;
+  grid-template-columns: 0.625rem 1fr;
+  gap: var(--space-3);
+  font-size: var(--text-lg);
+  line-height: var(--lh-heading);
+}
+.brief__point::before {
+  content: '';
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 50%;
+  margin-block-start: 0.5em;
+  background: var(--c-text-3);
+}
+.brief__point--good::before {
+  background: var(--c-savings);
+}
+.brief__point--attention::before {
+  background: var(--c-attention);
+}
+.brief__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  margin-block-start: var(--space-8);
+}
+.brief__action {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.brief__action-note {
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
+}
+@media (max-width: 40rem) {
+  .brief {
+    padding: var(--space-6) var(--space-4);
+  }
+  .brief__action,
+  .brief__action .btn {
+    inline-size: 100%;
+  }
+}
+
+/* Sits directly under the brief as its "read more", not as a separate card. */
+.disclosure--flush {
+  margin-block-start: var(--space-3);
+  background: transparent;
+  border-color: transparent;
+}
+.disclosure--flush[open] {
+  background: var(--c-surface);
+  border-color: var(--c-border);
+}
+.disclosure--quiet {
+  margin-block-start: var(--space-3);
+  background: transparent;
+  color: var(--c-text-2);
+}
+
+/* ---------- Change rows ---------- */
+.change {
+  display: grid;
+  gap: var(--space-3);
+  padding-block-start: var(--space-4);
+  max-inline-size: var(--measure);
+}
+.change p {
+  margin: 0;
+}
+.change__tech > summary {
+  inline-size: fit-content;
+  cursor: pointer;
+  font-size: var(--text-sm);
+  color: var(--c-text-3);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+.change__tech > summary:hover {
+  color: var(--c-text);
+}
+.dropped {
+  list-style: none;
+  margin: 0;
+  display: grid;
+  gap: var(--space-4);
+  padding-block-start: var(--space-4);
+  font-size: var(--text-sm);
+}
+.dropped li {
+  display: grid;
+  gap: var(--space-1);
+  max-inline-size: var(--measure);
+}
+
+/* ---------- Overview: unread AI summary ---------- */
+.notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-4);
+  margin-block-end: var(--space-8);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--c-accent);
+  color: var(--c-on-accent);
+  text-decoration: none;
+  transition: background-color var(--dur-fast) var(--ease-out);
+}
+.notice:hover {
+  background: var(--c-accent-hover);
+}
+.notice__label {
+  font-size: var(--text-lg);
+  font-weight: var(--fw-bold);
+}
+.notice__text {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+.notice__cta {
+  font-weight: var(--fw-medium);
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  white-space: nowrap;
+}
+
+/* Already-read summary, at the bottom of the overview. */
+.agent-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--c-surface);
+  border: var(--border-w) solid var(--c-border);
+  border-radius: var(--radius-lg);
+  color: var(--c-text);
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.agent-line:hover {
+  border-color: var(--c-accent);
+}
+.agent-line__text {
+  font-weight: var(--fw-medium);
+}
+.agent-line__meta {
+  font-size: var(--text-sm);
   color: var(--c-text-3);
 }

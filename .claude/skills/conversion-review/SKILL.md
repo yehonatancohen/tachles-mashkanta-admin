@@ -185,9 +185,34 @@ In the website repo:
 (e.g. review PR <link>, a failed production build after a merge, a stale source to fix)
 ```
 
-`findings` carries your memory between runs. Start from `latestReport.findings`, update it, and send the whole object:
+### The brief (what the owner actually reads)
+
+The owner reads `findings.brief` first, and usually only that: it is the top of the admin's AI page and the "new summary" notice on the overview. `summaryMd` sits behind a "full report" toggle. Write the brief fresh every run (never carry it over), as if texting a busy non-technical owner:
+
+- `headline` — **one** short Hebrew sentence with the single most important thing from this run, in first person. E.g. "יצרתי לך עמוד חדש על מס רכישה", "צריך עוד מאמרים כדי להביא תנועה", "יש הרבה צפיות בעמוד הריבית, אבל אף אחד לא משאיר פרטים", "המדריך החדש הכפיל את החשיפות בגוגל". If something is waiting for the owner's approval, that is the headline.
+- `highlights` — **2–4** items `{ "tone": "good" | "attention" | "info", "text": "…" }`, one short line each, most important first. `good` = good news, `attention` = needs the owner or is going badly, `info` = neutral.
+- `actions` — **0–3** items `{ "label": "…", "url": "https://…" }`: only things the owner should click now, most important first (it becomes the big button). Label is a verb phrase: "לבדוק ולאשר את העמוד החדש", "לאשר עדכון ריביות". Every open PR that waits for review (improvement and data refresh) must be here. Empty array when nothing is needed.
+
+Brief rules: plain everyday Hebrew. **No** file names, paths, change ids, metric names, event names, API/tool names (GSC, WAF, SharePoint…), PR-internal details or English jargon — those belong in `summaryMd`. Round numbers and say what they mean ("8 חיפושים בחודש", not "8 חשיפות במיקום 90.4"). No more than one number per line. Don't report routine non-events ("checked the rates, nothing changed") unless there's nothing else to say. Same honesty rules as everywhere: nothing here that `summaryMd` doesn't back up.
+
+```json
+"brief": {
+  "headline": "הכנתי מדריך חדש על הגדלת משכנתא, מחכה לאישור שלך",
+  "highlights": [
+    { "tone": "attention", "text": "המדריך לא יעלה לאתר עד שתאשר אותו" },
+    { "tone": "info", "text": "עדיין מעט מדי גולשים כדי להסיק מסקנות, אז אני מתמקד בתוכן חדש" },
+    { "tone": "good", "text": "אנשים כבר מוצאים אותנו בגוגל כשמחפשים \"ריבית משכנתא היום\"" }
+  ],
+  "actions": [{ "label": "לבדוק ולאשר את המדריך", "url": "https://github.com/yehonatancohen/mortgage-calculator/pull/5" }]
+}
+```
+
+### Memory
+
+`findings` also carries your memory between runs. Start from `latestReport.findings`, update it, and send the whole object:
 ```json
 {
+  "brief": { "headline": "…", "highlights": [], "actions": [] },
   "mode": "research",
   "researched": [{ "cluster": "מחזור משכנתא", "date": "2026-10-01" }],
   "backlog": [{ "topic": "…", "type": "new_guide|deepen_page|tool|ux|seo_meta", "evidence": "…", "status": "proposed|in_pr|shipped|rejected|retired", "changeId": "…", "proposedRuns": 1 }],

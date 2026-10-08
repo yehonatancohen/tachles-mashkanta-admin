@@ -3,84 +3,167 @@ export const prerender = false;
 import AdminLayout from '../layouts/AdminLayout.astro';
 import { getEnv } from '../server/env';
 import { listReports, listChanges, type AiChange } from '../server/queries/agent';
+import { latestBrief, writtenBrief, firstSentence, isAwaitingReview, isDropped, isLive, prLabel, SEEN_COOKIE } from '../server/agent-brief';
 import { renderMarkdown } from '../server/markdown';
 import { fmtDate, fmtDateTime } from '../server/time';
 
 const env = getEnv();
 const [reports, changes] = await Promise.all([listReports(env), listChanges(env)]);
 
-function status(c: AiChange): { label: string; tone: 'a' | 'b' | 'c' } {
-  if (c.result) return { label: 'נמדד', tone: 'a' };
-  if (c.shippedAt) return { label: c.evaluatedAt ? 'בבדיקה' : 'עלה · ממתין לנתונים', tone: 'b' };
-  if (c.prUrl) return { label: 'PR ממתין לאישור', tone: 'b' };
-  return { label: 'הוצע', tone: 'c' };
+const [latest, ...older] = reports;
+const brief = latest ? latestBrief(latest, changes) : null;
+
+// Opening this page is what "read" means for the overview's "new summary" notice.
+if (latest) {
+  Astro.cookies.set(SEEN_COOKIE, latest.id, {
+    path: '/',
+    maxAge: 60 * 60 * 24 * 365,
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: Astro.url.protocol === 'https:',
+  });
 }
+
+function status(c: AiChange): { label: string; tone: 'a' | 'b' | 'c'; rank: number } {
+  if (isAwaitingReview(c)) return { label: 'מחכה לאישור שלך', tone: 'b', rank: 0 };
+  if (isLive(c)) return { label: 'באוויר · מחכה לנתונים', tone: 'a', rank: 1 };
+  if (c.shippedAt) return { label: 'נמדד', tone: 'a', rank: 2 };
+  if (isDropped(c)) return { label: 'ירד מהפרק', tone: 'c', rank: 4 };
+  return { label: 'רעיון', tone: 'c', rank: 3 };
+}
+
+const ranked = changes.map((c) => ({ c, s: status(c) })).sort((a, b) => a.s.rank - b.s.rank);
+const active = ranked.filter(({ c }) => !isDropped(c));
+const dropped = ranked.filter(({ c }) => isDropped(c));
 ---
 
 <AdminLayout title="סוכן AI">
   <div class="page-head">
     <h1>סוכן AI</h1>
+    {latest && (
+      <p class="page-head__meta">
+        סריקה אחרונה {fmtDateTime(latest.createdAt)} · תקופה {fmtDate(latest.periodFrom)} – {fmtDate(latest.periodTo)}
+      </p>
+    )}
   </div>
-  <p class="page-intro">
-    הסוכן קורא את הנתונים כפעמיים בשבוע דרך <code>/api/export</code> וכותב לכאן דוחות והצעות שינוי,
-    יחד עם ההשערה, המדד שאמור להשתנות והתוצאה בפועל בריצה הבאה.
-  </p>
+
+  {!latest || !brief ? (
+    <p class="empty">הסוכן עוד לא סרק את האתר. הסיכום הראשון יופיע כאן אחרי הריצה הבאה שלו.</p>
+  ) : (
+    <section class="section">
+      <div class="brief">
+        <h2 class="brief__headline">{brief.headline}</h2>
+        {brief.points.length > 0 && (
+          <ul class="brief__points">
+            {brief.points.map((p) => (
+              <li class={`brief__point brief__point--${p.tone}`}>{p.text}</li>
+            ))}
+          </ul>
+        )}
+        {brief.actions.length > 0 && (
+          <div class="brief__actions">
+            {brief.actions.map((a, i) => (
+              <div class="brief__action">
+                <a class={`btn btn--lg ${i === 0 ? 'btn--primary' : 'btn--secondary'}`} href={a.url} target="_blank" rel="noopener noreferrer">
+                  {a.label} ⟵
+                </a>
+                <span class="brief__action-note">
+                  {a.note ? <>נפתח ב-GitHub · <bdi>{a.note}</bdi></> : 'נפתח בלשונית חדשה'}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      <details class="disclosure disclosure--flush">
+        <summary class="disclosure__summary">
+          <span class="disclosure__title">הדוח המלא, עם כל המספרים</span>
+        </summary>
+        <div class="disclosure__body report-body" set:html={renderMarkdown(latest.summaryMd)} />
+      </details>
+    </section>
+  )}
 
   <section class="section">
-    <h2>דוחות</h2>
-    {reports.length === 0 ? (
-      <p class="empty">אין דוחות עדיין.</p>
+    <h2>שינויים באתר</h2>
+    {active.length === 0 ? (
+      <p class="empty">הסוכן עוד לא הציע שינויים.</p>
     ) : (
       <div class="disclosure-list">
-        {reports.map((r) => (
+        {active.map(({ c, s }) => (
           <details class="disclosure">
             <summary class="disclosure__summary">
-              <span class="disclosure__title">דוח {fmtDate(r.periodFrom)} – {fmtDate(r.periodTo)}</span>
-              <span class="disclosure__meta">נכתב {fmtDateTime(r.createdAt)}</span>
+              <span class="disclosure__title">{firstSentence(c.description)}</span>
+              <span class={`badge badge--tier-${s.tone}`}>{s.label}</span>
+            </summary>
+            <div class="disclosure__body change">
+              <p>{c.description}</p>
+              <p><strong>למה:</strong> {c.hypothesis}</p>
+              {c.result && <p><strong>מה יצא:</strong> {c.result}</p>}
+              {isAwaitingReview(c) && (
+                <p>
+                  <a class="btn btn--primary" href={c.prUrl} target="_blank" rel="noopener noreferrer">לבדוק ולאשר ב-GitHub ⟵</a>
+                </p>
+              )}
+              <details class="change__tech">
+                <summary>פרטים טכניים</summary>
+                <dl class="kv">
+                  <dt>הוצע</dt><dd>{fmtDate(c.createdAt)}</dd>
+                  {c.shippedAt && <><dt>עלה לאוויר</dt><dd>{fmtDate(c.shippedAt)}</dd></>}
+                  {c.evaluatedAt && <><dt>נבדק</dt><dd>{fmtDate(c.evaluatedAt)}</dd></>}
+                  <dt>מדד</dt><dd><bdi><code>{c.metric}</code></bdi>{c.baseline != null && <> · בסיס <bdi>{c.baseline}</bdi></>}</dd>
+                  {c.prUrl && (
+                    <>
+                      <dt>PR</dt>
+                      <dd><a href={c.prUrl} target="_blank" rel="noopener noreferrer"><bdi>{prLabel(c.prUrl) ?? c.prUrl.replace(/^https:\/\/github\.com\//, '')}</bdi></a></dd>
+                    </>
+                  )}
+                  {c.files.length > 0 && (
+                    <>
+                      <dt>קבצים</dt>
+                      <dd><ul class="kv__files">{c.files.map((f) => <li><bdi><code>{f}</code></bdi></li>)}</ul></dd>
+                    </>
+                  )}
+                </dl>
+              </details>
+            </div>
+          </details>
+        ))}
+      </div>
+    )}
+    {dropped.length > 0 && (
+      <details class="disclosure disclosure--quiet">
+        <summary class="disclosure__summary">
+          <span class="disclosure__title">הצעות שירדו מהפרק ({dropped.length})</span>
+        </summary>
+        <ul class="disclosure__body dropped">
+          {dropped.map(({ c }) => (
+            <li>
+              <span>{firstSentence(c.description)}</span>
+              <span class="muted">{c.result ?? '—'} · {fmtDate(c.evaluatedAt!)}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
+    )}
+  </section>
+
+  {older.length > 0 && (
+    <section class="section">
+      <h2>סריקות קודמות</h2>
+      <div class="disclosure-list">
+        {older.map((r) => (
+          <details class="disclosure">
+            <summary class="disclosure__summary">
+              <span class="disclosure__date">{fmtDate(r.createdAt)}</span>
+              <span class="disclosure__title disclosure__title--clamp">
+                {writtenBrief(r.findings)?.headline ?? `דוח ${fmtDate(r.periodFrom)} – ${fmtDate(r.periodTo)}`}
+              </span>
             </summary>
             <div class="disclosure__body report-body" set:html={renderMarkdown(r.summaryMd)} />
           </details>
         ))}
       </div>
-    )}
-  </section>
-
-  <section class="section">
-    <h2>יומן שינויים</h2>
-    {changes.length === 0 ? (
-      <p class="empty">אין שינויים רשומים עדיין.</p>
-    ) : (
-      <div class="disclosure-list">
-        {changes.map((c) => {
-          const s = status(c);
-          return (
-            <details class="disclosure">
-              <summary class="disclosure__summary">
-                <span class="disclosure__date">{fmtDate(c.createdAt)}</span>
-                <span class="disclosure__title disclosure__title--clamp">{c.description}</span>
-                <span class={`badge badge--tier-${s.tone}`}>{s.label}</span>
-              </summary>
-              <dl class="disclosure__body kv">
-                <dt>תיאור</dt><dd>{c.description}</dd>
-                <dt>השערה</dt><dd>{c.hypothesis}</dd>
-                <dt>מדד</dt><dd><code>{c.metric}</code>{c.baseline != null && <> · בסיס <bdi>{c.baseline}</bdi></>}</dd>
-                <dt>תוצאה</dt><dd>{c.result ?? '—'}{c.evaluatedAt && ` (נבדק ${fmtDate(c.evaluatedAt)})`}</dd>
-                <dt>PR</dt>
-                <dd>
-                  {c.prUrl ? <a href={c.prUrl} target="_blank" rel="noopener noreferrer"><bdi>{c.prUrl.replace(/^https:\/\/github\.com\//, '')}</bdi></a> : '—'}
-                  {c.shippedAt && ` · עלה לאוויר ${fmtDate(c.shippedAt)}`}
-                </dd>
-                {c.files.length > 0 && (
-                  <>
-                    <dt>קבצים</dt>
-                    <dd><ul class="kv__files">{c.files.map((f) => <li><bdi><code>{f}</code></bdi></li>)}</ul></dd>
-                  </>
-                )}
-              </dl>
-            </details>
-          );
-        })}
-      </div>
-    )}
-  </section>
+    </section>
+  )}
 </AdminLayout>

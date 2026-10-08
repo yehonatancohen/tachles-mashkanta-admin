@@ -9,28 +9,35 @@ import BarList from '../components/BarList.astro';
 import Freshness from '../components/Freshness.astro';
 import { getEnv } from '../server/env';
 import { resolvePeriod } from '../server/period';
-import { overviewKpis, funnel, topSources, topLandingPages, latestReport } from '../server/queries/overview';
+import { overviewKpis, funnel, topSources, topLandingPages } from '../server/queries/overview';
 import { sourceStatuses } from '../server/queries/sources';
 import { activitySeries } from '../server/queries/activity';
 import { listJourneys } from '../server/queries/journeys';
-import { renderMarkdown } from '../server/markdown';
-import { fmtDate, fmtDateTime } from '../server/time';
+import { listReports, listChanges } from '../server/queries/agent';
+import { latestBrief, SEEN_COOKIE } from '../server/agent-brief';
+import { fmtDateTime } from '../server/time';
 
 const env = getEnv();
 const period = resolvePeriod(Astro.url);
 
-const [{ current, previous }, activity, recent, steps, sources, landing, report, syncStatus] = await Promise.all([
+const [{ current, previous }, activity, recent, steps, sources, landing, reports, changes, syncStatus] = await Promise.all([
   overviewKpis(env, period),
   activitySeries(env),
   listJourneys(env, period, {}, 20),
   funnel(env, period),
   topSources(env, period),
   topLandingPages(env, period),
-  latestReport(env),
+  listReports(env, 1),
+  listChanges(env),
   sourceStatuses(env),
 ]);
 
 const maxFunnel = Math.max(1, ...steps.map((s) => s.sessions));
+
+const report = reports[0] ?? null;
+const brief = report ? latestBrief(report, changes) : null;
+// /agent/ stores the id of the newest report it showed; anything else here is unread.
+const isNewReport = !!report && Astro.cookies.get(SEEN_COOKIE)?.value !== report.id;
 ---
 
 <AdminLayout title="סקירה">
@@ -39,6 +46,14 @@ const maxFunnel = Math.max(1, ...steps.map((s) => s.sessions));
     <PeriodPicker period={period} />
   </div>
   <Freshness sources={syncStatus} />
+
+  {isNewReport && brief && (
+    <a class="notice" href="/agent/">
+      <span class="notice__label">יש סיכום AI חדש</span>
+      <span class="notice__text">{brief.headline}</span>
+      <span class="notice__cta">לקריאה ⟵</span>
+    </a>
+  )}
 
   <section class="section">
     <div class="section__grid">
@@ -95,17 +110,13 @@ const maxFunnel = Math.max(1, ...steps.map((s) => s.sessions));
     </section>
   </div>
 
-  {report && (
+  {report && brief && !isNewReport && (
     <section class="section">
-      <h2>דוח AI אחרון</h2>
-      <details class="disclosure">
-        <summary class="disclosure__summary">
-          <span class="disclosure__title">דוח {fmtDate(report.periodFrom)} – {fmtDate(report.periodTo)}</span>
-          <span class="disclosure__meta">נכתב {fmtDateTime(report.createdAt)}</span>
-        </summary>
-        <div class="disclosure__body report-body" set:html={renderMarkdown(report.summaryMd)} />
-      </details>
-      <p><a class="btn btn--quiet" href="/agent/">כל הדוחות ⟵</a></p>
+      <h2>סוכן AI</h2>
+      <a class="agent-line" href="/agent/">
+        <span class="agent-line__text">{brief.headline}</span>
+        <span class="agent-line__meta">סריקה אחרונה {fmtDateTime(report.createdAt)} · לסיכום ⟵</span>
+      </a>
     </section>
   )}
 </AdminLayout>

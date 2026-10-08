@@ -109,19 +109,3 @@ export async function topLandingPages(env: Env, period: Period, limit = 5): Prom
     .all<{ page: string; sessions: number; leads: number }>();
   return results.map((r) => ({ ...r, cvPct: r.sessions > 0 ? Math.round((r.leads / r.sessions) * 1000) / 10 : 0 }));
 }
-
-export interface LatestReport {
-  id: string;
-  createdAt: string;
-  periodFrom: string;
-  periodTo: string;
-  summaryMd: string;
-}
-
-export async function latestReport(env: Env): Promise<LatestReport | null> {
-  const row = await env.ANALYTICS.prepare(
-    `SELECT id, created_at, period_from, period_to, summary_md FROM ai_reports ORDER BY created_at DESC LIMIT 1`,
-  ).first<{ id: string; created_at: string; period_from: string; period_to: string; summary_md: string }>();
-  if (!row) return null;
-  return { id: row.id, createdAt: row.created_at, periodFrom: row.period_from, periodTo: row.period_to, summaryMd: row.summary_md };
-}
