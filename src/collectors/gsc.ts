@@ -1,11 +1,16 @@
 /** Google Search Console (Search Analytics API). GSC data lags ~2-3 days, so the daily cron
- * re-pulls a rolling window and upserts on the natural key — see gsc_daily's PRIMARY KEY. */
+ * re-pulls a rolling window and upserts on the natural key — see gsc_daily's PRIMARY KEY.
+ *
+ * A request that includes the `query` dimension silently drops anonymized (rare) queries, which on
+ * a small site is most of the clicks. So we also pull without `query` and store each
+ * date/page/device/country's leftover as a row with query = '' — sums over gsc_daily then match
+ * the Search Console UI, and per-query views already skip query = ''. */
 import type { Env } from '../server/env';
 import type { Collector, DateRange } from './types';
 import { googleAccessToken, GSC_SCOPE } from './google-auth';
 
 interface GscRow {
-  keys: [string, string, string, string, string]; // date, query, page, device, country
+  keys: string[]; // the requested dimensions, in order
   clicks: number;
   impressions: number;
   ctr: number;
@@ -22,21 +27,40 @@ export const gscCollector: Collector = {
   },
   async run(env: Env, range: DateRange) {
     if (!env.GOOGLE_SA_JSON || !env.GSC_SITE_URL) throw new Error('GOOGLE_SA_JSON / GSC_SITE_URL not configured');
+    const siteUrl = env.GSC_SITE_URL;
     const token = await googleAccessToken(env, GSC_SCOPE);
 
-    const res = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(env.GSC_SITE_URL)}/searchAnalytics/query`, {
-      method: 'POST',
-      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        startDate: range.from,
-        endDate: range.to,
-        dimensions: ['date', 'query', 'page', 'device', 'country'],
-        rowLimit: 25000,
-      }),
-    });
-    if (!res.ok) throw new Error(`GSC query failed: ${res.status} ${await res.text()}`);
-    const body = await res.json<{ rows?: GscRow[] }>();
-    const rows = body.rows ?? [];
+    const query = async (dimensions: string[]) => {
+      const res = await fetch(`https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ startDate: range.from, endDate: range.to, dimensions, rowLimit: 25000 }),
+      });
+      if (!res.ok) throw new Error(`GSC query failed: ${res.status} ${await res.text()}`);
+      return (await res.json<{ rows?: GscRow[] }>()).rows ?? [];
+    };
+    const byQuery = await query(['date', 'query', 'page', 'device', 'country']);
+    const totals = await query(['date', 'page', 'device', 'country']);
+
+    // Leftover per date/page/device/country = totals minus what the per-query rows account for.
+    const known = new Map<string, { clicks: number; impressions: number; posImpr: number }>();
+    for (const r of byQuery) {
+      const k = [r.keys[0], r.keys[2], r.keys[3], r.keys[4]].join('|');
+      const acc = known.get(k) ?? { clicks: 0, impressions: 0, posImpr: 0 };
+      acc.clicks += r.clicks;
+      acc.impressions += r.impressions;
+      acc.posImpr += r.position * r.impressions;
+      known.set(k, acc);
+    }
+    const rows: GscRow[] = [...byQuery];
+    for (const t of totals) {
+      const acc = known.get(t.keys.join('|')) ?? { clicks: 0, impressions: 0, posImpr: 0 };
+      const clicks = Math.max(0, t.clicks - acc.clicks);
+      const impressions = Math.max(0, t.impressions - acc.impressions);
+      if (clicks === 0 && impressions === 0) continue;
+      const position = impressions > 0 ? Math.max(1, (t.position * t.impressions - acc.posImpr) / impressions) : t.position;
+      rows.push({ keys: [t.keys[0], '', t.keys[1], t.keys[2], t.keys[3]], clicks, impressions, ctr: impressions > 0 ? clicks / impressions : 0, position });
+    }
     if (rows.length === 0) return { rows: 0 };
 
     // Re-pulling this window replaces what was there before (GSC numbers firm up over a few days).

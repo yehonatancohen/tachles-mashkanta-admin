@@ -19,6 +19,26 @@ interface ClarityDimensionValue {
   name?: string; // e.g. a URL when dimension1=URL
   [metric: string]: unknown;
 }
+// Which field holds each metric's value. Every metric's rows also carry `sessionsCount` (all
+// sessions for that URL/device), so reading that first stored the session count under every
+// metric name. Click/scroll signals use `subTotal` (occurrences); Traffic and the averages have
+// their own fields. Values come back as strings or numbers.
+const VALUE_FIELD: Record<string, string> = {
+  Traffic: 'totalSessionCount',
+  EngagementTime: 'activeTime',
+  ScrollDepth: 'averageScrollDepth',
+};
+// Extra values worth keeping from the same rows, stored under their own metric names.
+const EXTRA_FIELDS: Record<string, Record<string, string>> = {
+  Traffic: { TrafficBotSessions: 'totalBotSessionCount', TrafficUsers: 'distinctUserCount' },
+};
+
+/** The dimension's key casing isn't documented consistently (URL / Url), so match loosely. */
+const field = (info: ClarityDimensionValue, name: string) => {
+  const key = Object.keys(info).find((k) => k.toLowerCase() === name.toLowerCase());
+  return key === undefined ? undefined : info[key];
+};
+
 interface ClarityMetricEntry {
   metricName: string;
   information: ClarityDimensionValue[];
@@ -45,17 +65,21 @@ export const clarityCollector: Collector = {
     for (const entry of body) {
       if (!TRACKED_METRICS.has(entry.metricName)) continue;
       for (const info of entry.information) {
-        const url = typeof info.name === 'string' ? info.name : String(info.URL ?? '');
-        const device = typeof info.Device === 'string' ? info.Device : '';
-        const raw = info.sessionsCount ?? info.subTotal ?? info.totalCount ?? info.sessionsWithMetricPercentage ?? info.value;
-        const value = typeof raw === 'number' ? raw : Number(raw ?? 0);
-        if (!Number.isFinite(value)) continue;
-        statements.push(
-          env.ANALYTICS.prepare(
-            `INSERT INTO clarity_daily (date, url, device, metric, value) VALUES (?1, ?2, ?3, ?4, ?5)
-             ON CONFLICT (date, url, device, metric) DO UPDATE SET value = excluded.value`,
-          ).bind(today, url, device, entry.metricName, value),
-        );
+        const url = String(field(info, 'URL') ?? info.name ?? '');
+        const device = String(field(info, 'Device') ?? '');
+        const values: Record<string, string> = { [entry.metricName]: VALUE_FIELD[entry.metricName] ?? 'subTotal', ...EXTRA_FIELDS[entry.metricName] };
+        for (const [metric, key] of Object.entries(values)) {
+          const raw = field(info, key);
+          if (raw === undefined || raw === null) continue;
+          const value = Number(raw);
+          if (!Number.isFinite(value)) continue;
+          statements.push(
+            env.ANALYTICS.prepare(
+              `INSERT INTO clarity_daily (date, url, device, metric, value) VALUES (?1, ?2, ?3, ?4, ?5)
+               ON CONFLICT (date, url, device, metric) DO UPDATE SET value = excluded.value`,
+            ).bind(today, url, device, metric, value),
+          );
+        }
       }
     }
     if (statements.length > 0) await env.ANALYTICS.batch(statements);

@@ -54,6 +54,13 @@ Read the website repo's `PRODUCT.md` and `DESIGN.md` (see Setup for locating it)
 
 From `state.sources`: a source is **stale** if its last run isn't `ok` or is older than 48 hours. List stale sources at the top of the report ("⚠ מקור נתונים תקוע") and don't draw conclusions from them. GSC data lags 2–3 days, so any window you analyze ends 3 days ago for GSC.
 
+Known data caveats — account for these before calling something a measurement problem:
+- **GA4 before 2026-10-20 is near-empty**: the site's CSP blocked gtag.js until then. Never compare GA4 across that date.
+- **GSC rows with `query = ''`** are anonymized (rare) queries Google won't name. Counted in totals, not attributable to a query. Rows before 2026-10-29 lack them unless backfilled, so older click/impression totals are undercounts.
+- **Clarity rows before 2026-10-29 are invalid** (every metric held the session count, URL was empty). Ignore them.
+- **Your own page visits** are dropped by the beacon from 2026-10-29 (headless 800x600 Linux). Earlier sessions with that fingerprint are you, not visitors.
+- **Rank-tracker traffic**: GSC queries wrapped in `"…"` or `[…]` are exact-match syntax used by rank-tracking tools, not people. GA4 google/organic sessions with zero engagement, no matching GSC clicks and no first-party session are bots — don't report them as traction.
+
 **Period** for this report: from the day after `latestReport.periodTo` (or 14 days ago if there is no report) through yesterday.
 
 ## Step 2 — Market data refresh (every run)
